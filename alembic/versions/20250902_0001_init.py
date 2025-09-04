@@ -9,6 +9,7 @@ depends_on = None
 
 def upgrade() -> None:
     tx_type = sa.Enum("income", "expense", name="txtype")
+
     freq = sa.Enum(
         "once",
         "weekly",
@@ -19,8 +20,8 @@ def upgrade() -> None:
         name="frequency",
     )
 
-    tx_type.create(op.get_bind(), checkfirst=True)
-    freq.create(op.get_bind(), checkfirst=True)
+    # tx_type.create(op.get_bind(), checkfirst=True)
+    # freq.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "profiles",

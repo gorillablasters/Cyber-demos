@@ -1,19 +1,17 @@
+// frontend/pages/index.jsx
 import React, { useState, useEffect } from "react";
 
-// 🏴 EXPECTED FLAGS – use the ones from your file
+/* Flags for stages 1–6 */
 const EXPECTED_FLAGS = [
   "DOOM{There's}",
   "DOOM{only}",
   "DOOM{one}",
   "DOOM{beer}",
   "DOOM{left}",
-  "DOOM{doomsday_sequence_complete}"
+  "DOOM{doomsday_sequence_complete}",
 ];
 
 export default function Home() {
-  /* -----------------------------
-       DOOM ASCII intro + history
-     ------------------------------*/
   const [history, setHistory] = useState([
     "███╗   ███╗ █████╗ ███████╗██╗  ██╗",
     "████╗ ████║██╔══██╗██╔════╝██║ ██╔╝",
@@ -21,7 +19,7 @@ export default function Home() {
     "██║╚██╔╝██║██╔══██║╚════██║██╔═██╗ ",
     "██║ ╚═╝ ██║██║  ██║███████║██║  ██╗",
     "╚═╝     ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝",
-    "       MF DOOM // DOOMCORE",
+    "       TOP SECRET // DOOMCORE",
     "",
     "OPERATION DOOMSDAY // GROUNDSTATION MF-01",
     "Link Status: [ESTABLISHED]",
@@ -29,9 +27,6 @@ export default function Home() {
     "Type `help` to list available commands."
   ]);
 
-  /* -----------------------------
-         INPUT + COMMAND STATE
-     ------------------------------*/
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [lastHex, setLastHex] = useState(null);
@@ -39,11 +34,55 @@ export default function Home() {
   const backendBase =
     process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
-  /* -----------------------------
-         COMMAND HISTORY (↑ / ↓)
-     ------------------------------*/
   const [commandHistory, setCommandHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+
+  const [flagInput, setFlagInput] = useState("");
+  const [flagStatus, setFlagStatus] = useState("");
+  const [foundFlags, setFoundFlags] = useState([]);
+  const [doomsdayActive, setDoomsdayActive] = useState(false);
+
+  const totalFlags = EXPECTED_FLAGS.length;
+  const flagProgress = (foundFlags.length / totalFlags) * 100;
+
+  const [orbitInfo, setOrbitInfo] = useState({ lat: 0, lon: 0 });
+
+  const [fwFile, setFwFile] = useState(null);
+  const [fwStatus, setFwStatus] = useState("");
+
+  // const MAX_LINE_LEN = 44;
+
+  // const chunkLine = (line) => {
+  //   if (typeof line !== "string") return [];
+  //   if (line.length <= MAX_LINE_LEN) return [line];
+  //   const out = [];
+  //   for (let i = 0; i < line.length; i += MAX_LINE_LEN) {
+  //     out.push(line.slice(i, i + MAX_LINE_LEN));
+  //   }
+  //   return out;
+  // };
+
+  const flickerScreen = () => {
+    if (typeof document === "undefined") return;
+    const el = document.body;
+    el.style.filter = "brightness(1.35) contrast(1.3)";
+    setTimeout(() => {
+      el.style.filter = "";
+    }, 160);
+  };
+
+  // const pushLine = (line) => {
+  //   if (typeof line !== "string") return;
+  //   const chunks = chunkLine(line);
+  //   flickerScreen();
+  //   setHistory((h) => [...h, ...chunks]);
+  // };
+  const pushLine = (line) => {
+  if (typeof line !== "string") return;
+  flickerScreen();
+  setHistory((h) => [...h, line]);
+};
+
 
   const handleKeyDown = (e) => {
     if (e.key === "ArrowUp") {
@@ -66,23 +105,12 @@ export default function Home() {
     }
   };
 
-  /* -----------------------------
-           FLAG SYSTEM STATE
-     ------------------------------*/
-  const [flagInput, setFlagInput] = useState("");
-  const [flagStatus, setFlagStatus] = useState("");
-  const [foundFlags, setFoundFlags] = useState([]);
-  const [doomsdayActive, setDoomsdayActive] = useState(false);
-  const totalFlags = EXPECTED_FLAGS.length;
-
-  const flagProgress = (foundFlags.length / totalFlags) * 100;
-
   const handleFlagSubmit = (e) => {
     e.preventDefault();
     const raw = flagInput.trim();
     if (!raw) return;
 
-    const normalized = raw; // keep exact match for now
+    const normalized = raw;
     if (EXPECTED_FLAGS.includes(normalized)) {
       if (!foundFlags.includes(normalized)) {
         setFoundFlags((prev) => [...prev, normalized]);
@@ -98,7 +126,6 @@ export default function Home() {
     setFlagInput("");
   };
 
-  // When all flags are found, activate DOOMSDAY
   useEffect(() => {
     if (!doomsdayActive && foundFlags.length === totalFlags) {
       setDoomsdayActive(true);
@@ -109,148 +136,55 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foundFlags, totalFlags, doomsdayActive]);
 
-  /* -----------------------------
-           LINE CHUNKING (NO TRUNCATION)
-     ------------------------------*/
-  const MAX_LINE_LEN = 44; // after this, we hard-wrap to a new line
-
-  const chunkLine = (line) => {
-    if (typeof line !== "string") return [];
-    if (line.length <= MAX_LINE_LEN) return [line];
-    const chunks = [];
-    for (let i = 0; i < line.length; i += MAX_LINE_LEN) {
-      chunks.push(line.slice(i, i + MAX_LINE_LEN));
-    }
-    return chunks;
-  };
-
-  /* -----------------------------
-           SCREEN FLICKER EFFECT
-     ------------------------------*/
-  const flickerScreen = () => {
-    if (typeof document === "undefined") return;
-    const el = document.body;
-    el.style.filter = "brightness(1.5) contrast(1.2)";
-    setTimeout(() => {
-      el.style.filter = "";
-    }, 120);
-  };
-
-  const pushLine = (line) => {
-    // accept only string; allow empty string for spacing
-    if (typeof line !== "string") return;
-
-    const chunks = chunkLine(line);
-    flickerScreen();
-    setHistory((h) => [...h, ...chunks]);
-  };
-
-  /* -----------------------------
-             SAT ORBIT SYSTEM
-     ------------------------------*/
-  const [orbitInfo, setOrbitInfo] = useState({ lat: 0, lon: 0 });
-
   useEffect(() => {
-    const interval = setInterval(() => {
+    const timer = setInterval(() => {
       const t = Date.now() / 1000;
-      const orbitalPeriod = 92 * 60; // 92-minute LEO orbit
+      const orbitalPeriod = 92 * 60;
       const phase = (t % orbitalPeriod) / orbitalPeriod;
-
-      const lat = Math.sin(phase * 2 * Math.PI) * 45; // ±45°
-      const lon = phase * 360 - 180; // -180..180
-
+      const lat = Math.sin(phase * 2 * Math.PI) * 45;
+      const lon = phase * 360 - 180;
       setOrbitInfo({ lat, lon });
     }, 1000);
-    return () => clearInterval(interval);
+    return () => clearInterval(timer);
   }, []);
 
-  /* -----------------------------
-           RANDOM VILLAIN ALARMS
-     ------------------------------*/
   useEffect(() => {
     const messages = [
-      "[ALERT] Mask resonance spike detected on villain frequency.",
-      "[WARN] DOOMCORE coolant levels dipping below villain threshold.",
-      "[ALERT] Unauthorized hero comms intercepted. Scrambling mask.",
-      "[WARN] Beam alignment jitter — suggest minor villain calibration.",
-      "[INFO] Latent DOOM energy detected in lower orbit sectors."
+      "[ALERT] Mask resonance spike detected.",
+      "[WARN] Villain coolant below nominal.",
+      "[ALERT] Hero comms intercepted. Scrambling mask.",
+      "[WARN] Beam jitter detected.",
+      "[INFO] Latent DOOM energy in orbit."
     ];
-
     let active = true;
-    const schedule = () => {
-      const timeout = 45000 + Math.random() * 30000; // 45–75s
+    const loop = () => {
+      const delay = 45000 + Math.random() * 30000;
       setTimeout(() => {
         if (!active) return;
         const msg = messages[Math.floor(Math.random() * messages.length)];
         pushLine(msg);
-        schedule();
-      }, timeout);
+        loop();
+      }, delay);
     };
-    schedule();
-
+    loop();
     return () => {
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* -----------------------------
-           TYPEWRITER LINE OUTPUT
-     ------------------------------*/
-  function TypeLine({ text }) {
-    // make sure text is always a string to avoid "undefined" glitches
-    const safeText = typeof text === "string" ? text : "";
-    const [shown, setShown] = useState("");
-
-    useEffect(() => {
-      setShown("");
-      if (!safeText) return;
-      let i = 0;
-      const timer = setInterval(() => {
-        setShown((s) => s + safeText[i]);
-        i++;
-        if (i >= safeText.length) clearInterval(timer);
-      }, 8);
-      return () => clearInterval(timer);
-    }, [safeText]);
-
-    return <div style={{ wordBreak: "break-all" }}>{shown}</div>;
-  }
-
-  /* -----------------------------
-                   SEND CMD
-     ------------------------------*/
   const handleSubmit = async (e) => {
     e.preventDefault();
     const line = input.trim();
     if (!line) return;
 
-    if (line.toLowerCase() === "reboot") {
-      flickerScreen();
-      setHistory([
-        "      ▄██████████████▄",
-        "    ▄██████████████████▄",
-        "   ███████▀▀▀▀▀▀▀▀███████",
-        "   █████▀  DOOMCORE  ▀█████",
-        "   ████▌ 🔥 REBOOT 🔥 ▐████",
-        "   ████▌  MF DOOM     ▐████",
-        "   █████▄            ▄█████",
-        "    ██████▄▄▄▄▄▄▄▄▄▄██████",
-        "      ▀████████████████▀",
-        "",
-        "DOOMCORE REBOOT SEQUENCE INITIATED...",
-        ""
-      ]);
-    }
-
     pushLine(`> ${line}`);
     setInput("");
-
     setCommandHistory((h) => [...h, line]);
     setHistoryIndex(-1);
 
     if (busy) {
-      pushLine("[WAIT] Command already running...");
+      pushLine("[WAIT] Command in progress...");
       return;
     }
 
@@ -262,28 +196,50 @@ export default function Home() {
         body: JSON.stringify({ line })
       });
       const data = await res.json();
-
       if (!data.ok) {
-        pushLine(`[ERR] ${data.error || "unknown error"}`);
+        pushLine(`[ERR] ${data.error}`);
       } else {
-        if (data.text && data.text.trim().length > 0) {
+        if (data.text) {
           pushLine("=== DECODED TEXT ===");
-          data.text.split(/\r?\n/).forEach((ln) => pushLine(ln));
+          // data.text.split(/\n/).forEach((ln) => pushLine(ln));
+          data.text.split(/\n/).forEach((ln) => {
+  if (ln.trim().length > 0) pushLine(ln);
+});
+
         }
-        if (data.raw_hex && data.raw_hex.length > 0) {
-          setLastHex(data.raw_hex);
-        }
+        if (data.raw_hex) setLastHex(data.raw_hex);
       }
     } catch (err) {
-      pushLine(`[ERR] ${err.message || String(err)}`);
+      pushLine(`[ERR] ${err.message}`);
     } finally {
       setBusy(false);
     }
   };
 
-  /* -----------------------------
-            QUICK BTN STYLE
-     ------------------------------*/
+  const handleFirmwareUpload = async () => {
+    if (!fwFile) return;
+    const form = new FormData();
+    form.append("file", fwFile);
+    try {
+      const res = await fetch(`${backendBase}/api/upload_firmware`, {
+        method: "POST",
+        body: form
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        setFwStatus("❌ Upload error");
+        pushLine(`[FW] ERROR: ${data.error}`);
+      } else {
+        setFwStatus("✅ Firmware uploaded");
+        pushLine("=== FIRMWARE RESPONSE ===");
+        data.text.split(/\n/).forEach((ln) => pushLine(ln));
+      }
+    } catch (err) {
+      setFwStatus("❌ Upload failed.");
+      pushLine(`[FW] Upload failed: ${err.message}`);
+    }
+  };
+
   const quickButtonStyle = {
     background: "#331111",
     border: "1px solid #662222",
@@ -295,9 +251,6 @@ export default function Home() {
     textAlign: "left"
   };
 
-  /* -----------------------------
-                     UI
-     ------------------------------*/
   return (
     <div
       style={{
@@ -306,27 +259,26 @@ export default function Home() {
           "radial-gradient(circle at top, #441111 0, #050505 55%, #000000 100%)",
         color: "#f5f5f5",
         fontFamily:
-          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace',
         padding: "24px",
         position: "relative",
         overflow: "hidden"
       }}
     >
-      {/* CRT Scanlines */}
+      {/* Strong CRT scanlines */}
       <div
         style={{
           pointerEvents: "none",
           position: "absolute",
           inset: 0,
           background:
-            "linear-gradient(rgba(255,255,255,0.15) 1px, rgba(0,0,0,0) 1px)",
-          backgroundSize: "100% 2px",
+            "linear-gradient(rgba(255,255,255,0.20) 3px, rgba(0,0,0,0) 3px)",
+          backgroundSize: "100% 4px",
           mixBlendMode: "overlay",
-          animation: "scan 18s linear infinite"
+          animation: "scan 9s linear infinite"
         }}
       ></div>
 
-      {/* Global Animations */}
       <style jsx global>{`
         @keyframes scan {
           0% {
@@ -334,31 +286,6 @@ export default function Home() {
           }
           100% {
             transform: translateY(100%);
-          }
-        }
-
-        /* 
-          🔥 SWEEP-BLINK (cursor fade)
-          CRT-style cursor blink
-        */
-        .blink {
-          animation: cursorBlink 2.8s ease-in-out infinite;
-        }
-        @keyframes cursorBlink {
-          0% {
-            opacity: 1;
-          }
-          45% {
-            opacity: 1;
-          }
-          55% {
-            opacity: 0;
-          }
-          65% {
-            opacity: 1;
-          }
-          100% {
-            opacity: 1;
           }
         }
       `}</style>
@@ -380,7 +307,7 @@ export default function Home() {
             gridTemplateColumns: "2fr 1fr"
           }}
         >
-          {/* ---------------- TERMINAL ---------------- */}
+          {/* Terminal */}
           <section
             style={{
               background: "rgba(10, 10, 10, 0.9)",
@@ -401,19 +328,11 @@ export default function Home() {
                 fontSize: "0.85rem",
                 display: "flex",
                 justifyContent: "space-between",
-                alignItems: "center",
-                background: doomsdayActive
-                  ? "linear-gradient(90deg, rgba(255,0,0,0.7), rgba(80,0,0,0.8))"
-                  : "linear-gradient(90deg, rgba(120,0,0,0.7), rgba(40,0,0,0.4))"
+                background:
+                  "linear-gradient(90deg, rgba(120,0,0,0.5), rgba(40,0,0,0.4))"
               }}
             >
-              <span>
-                DOOMCORE GROUNDSTATION CONSOLE
-                {doomsdayActive && " // LASER: ARMED"}
-              </span>
-              <span style={{ color: "#ff6666" }}>
-                LINK: <strong>ONLINE</strong>
-              </span>
+              DOOMCORE GROUNDSTATION CONSOLE
             </div>
 
             <div
@@ -427,7 +346,7 @@ export default function Home() {
               }}
             >
               {history.map((line, idx) => (
-                <TypeLine key={idx} text={line} />
+                <div key={idx}>{line}</div>
               ))}
             </div>
 
@@ -441,9 +360,7 @@ export default function Home() {
                 alignItems: "center"
               }}
             >
-              <span style={{ color: "#ff4444" }}>
-                mf@doomcore:~$ <span className="blink">█</span>
-              </span>
+              <span style={{ color: "#ff4444" }}>mf@doomcore:~$ █</span>
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -458,7 +375,7 @@ export default function Home() {
                   padding: "4px 8px"
                 }}
                 autoFocus
-                placeholder="type 'help', 'dump 0 512', 'leak', 'fw_info', 'reboot'..."
+                placeholder="type 'help', 'dump 0 512', 'fw_info', 'leak'..."
               />
               <button
                 type="submit"
@@ -468,7 +385,6 @@ export default function Home() {
                   border: "none",
                   borderRadius: 6,
                   padding: "6px 10px",
-                  fontSize: "0.8rem",
                   cursor: busy ? "not-allowed" : "pointer",
                   color: "#f5f5f5"
                 }}
@@ -478,7 +394,7 @@ export default function Home() {
             </form>
           </section>
 
-          {/* ---------------- SIDEBAR ---------------- */}
+          {/* Sidebar */}
           <section
             style={{
               background: "#080808",
@@ -490,109 +406,47 @@ export default function Home() {
               gap: 12
             }}
           >
-            {/* ORBIT */}
+            {/* Orbit */}
             <div>
-              <h2 style={{ fontSize: "1rem", marginBottom: 4 }}>
-                DOOMSAT-1 LIVE ORBIT
-              </h2>
+              <h3>DOOMSAT-1 LIVE ORBIT</h3>
               <div style={{ fontSize: "0.8rem", opacity: 0.8 }}>
-                MASK ALIGNMENT: NOMINAL
-              </div>
-              <div style={{ marginTop: 8, fontSize: "0.8rem" }}>
                 LAT: {orbitInfo.lat.toFixed(2)}°
               </div>
-              <div style={{ fontSize: "0.8rem" }}>
+              <div style={{ fontSize: "0.8rem", opacity: 0.8 }}>
                 LON: {orbitInfo.lon.toFixed(2)}°
-              </div>
-
-              <div
-                style={{
-                  marginTop: 10,
-                  height: 120,
-                  borderRadius: 8,
-                  border: "1px solid #333",
-                  background:
-                    "radial-gradient(circle at center, #220000 0, #050505 60%, #000000 100%)",
-                  position: "relative",
-                  overflow: "hidden",
-                  fontSize: "0.65rem",
-                  color: "#ccc"
-                }}
-              >
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 8,
-                    border: "1px dashed #552222",
-                    borderRadius: 6
-                  }}
-                />
-
-                <div
-                  style={{
-                    position: "absolute",
-                    left: `${((orbitInfo.lon + 180) / 360) * 100}%`,
-                    top: `${50 - (orbitInfo.lat / 90) * 40}%`,
-                    transform: "translate(-50%, -50%)",
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    background: "#ff5555",
-                    boxShadow: "0 0 10px #ff5555"
-                  }}
-                />
-
-                <div style={{ position: "absolute", bottom: 4, left: 8 }}>
-                  DOOMSAT-1
-                </div>
-                <div style={{ position: "absolute", bottom: 4, right: 8 }}>
-                  TARGET ZONE
-                </div>
               </div>
             </div>
 
-            {/* DOOMSDAY LASER PROGRESS */}
+            {/* Laser progress */}
             <div>
-              <h3 style={{ fontSize: "0.9rem", marginBottom: 4 }}>
-                DOOMSDAY LASER PROGRESS
-              </h3>
+              <h3>DOOMSDAY LASER PROGRESS</h3>
               <div
                 style={{
-                  marginTop: 4,
                   height: 8,
                   borderRadius: 999,
                   background: "#220000",
-                  overflow: "hidden"
+                  overflow: "hidden",
+                  marginTop: 6
                 }}
               >
                 <div
                   style={{
                     width: `${flagProgress}%`,
                     height: "100%",
-                    background: doomsdayActive
-                      ? "linear-gradient(90deg, #ffdd55, #ff0000)"
-                      : "linear-gradient(90deg, #33ff88, #ffee33, #ff3333)",
+                    background:
+                      "linear-gradient(90deg, #33ff88, #ffee33, #ff3333)",
                     transition: "width 0.4s"
                   }}
                 ></div>
               </div>
-              <div
-                style={{
-                  fontSize: "0.75rem",
-                  marginTop: 4,
-                  opacity: 0.8
-                }}
-              >
-                Flags found: {foundFlags.length} / {totalFlags}{" "}
-                {doomsdayActive && " // DOOMSDAY LASER: ACTIVATED"}
+              <div style={{ fontSize: "0.75rem", opacity: 0.8, marginTop: 4 }}>
+                Flags found: {foundFlags.length} / {totalFlags}
               </div>
             </div>
 
-            {/* FLAG INPUT */}
+            {/* Flag input */}
             <div>
-              <h3 style={{ fontSize: "0.9rem", marginBottom: 4 }}>
-                Submit Flag
-              </h3>
+              <h3>Submit Flag</h3>
               <form
                 onSubmit={handleFlagSubmit}
                 style={{ display: "flex", flexDirection: "column", gap: 6 }}
@@ -606,7 +460,6 @@ export default function Home() {
                     border: "1px solid #333",
                     borderRadius: 6,
                     color: "#f5f5f5",
-                    fontSize: "0.8rem",
                     padding: "4px 8px"
                   }}
                 />
@@ -617,76 +470,89 @@ export default function Home() {
                     border: "none",
                     borderRadius: 6,
                     padding: "4px 8px",
-                    fontSize: "0.8rem",
-                    cursor: "pointer",
-                    color: "#f5f5f5",
-                    textAlign: "center"
+                    color: "#f5f5f5"
                   }}
                 >
-                  Check Flag
+                  Submit
                 </button>
               </form>
               {flagStatus && (
-                <div
-                  style={{
-                    fontSize: "0.75rem",
-                    marginTop: 4,
-                    opacity: 0.9
-                  }}
-                >
+                <div style={{ fontSize: "0.75rem", marginTop: 4 }}>
                   {flagStatus}
                 </div>
               )}
             </div>
 
-            {/* QUICK ACTIONS */}
+            {/* Quick actions */}
             <div>
-              <h3 style={{ fontSize: "0.9rem", marginBottom: 4 }}>
-                Quick Actions
-              </h3>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 6
-                }}
+              <h3>Quick Actions</h3>
+              <button onClick={() => setInput("leak")} style={quickButtonStyle}>
+                Trigger Memory Leak
+              </button>
+              <button
+                onClick={() => setInput("dump 0 2048")}
+                style={quickButtonStyle}
               >
-                <button
-                  onClick={() => setInput("leak")}
-                  style={quickButtonStyle}
-                >
-                  Trigger Memory Leak
-                </button>
-                <button
-                  onClick={() => setInput("dump 0 512")}
-                  style={quickButtonStyle}
-                >
-                  Dump Flash [0x0000..0x0200]
-                </button>
-                <button
-                  onClick={() => setInput("fw_info")}
-                  style={quickButtonStyle}
-                >
-                  Firmware Update Hints
-                </button>
-              </div>
+                Dump Flash [0x0000..0x0800]
+              </button>
+              <button
+                onClick={() => setInput("fw_info")}
+                style={quickButtonStyle}
+              >
+                Firmware Update Hints
+              </button>
             </div>
 
-            {/* HEX PREVIEW */}
+            {/* Firmware upload */}
+            <div>
+              <h3>Upload Firmware</h3>
+              <input
+                type="file"
+                onChange={(e) => setFwFile(e.target.files[0])}
+                style={{
+                  background: "#111",
+                  color: "#ddd",
+                  border: "1px solid #333",
+                  borderRadius: 6,
+                  padding: 4,
+                  fontSize: "0.75rem"
+                }}
+              />
+              <button
+                onClick={handleFirmwareUpload}
+                style={{
+                  marginTop: 6,
+                  background: "#4444aa",
+                  border: "none",
+                  borderRadius: 6,
+                  padding: "4px 8px",
+                  color: "white",
+                  cursor: "pointer",
+                  fontSize: "0.8rem"
+                }}
+              >
+                Upload
+              </button>
+              {fwStatus && (
+                <div style={{ marginTop: 4, fontSize: "0.75rem" }}>
+                  {fwStatus}
+                </div>
+              )}
+            </div>
+
+            {/* Hex preview */}
             {lastHex && (
-              <div style={{ marginTop: 8 }}>
-                <h3 style={{ fontSize: "0.9rem", marginBottom: 4 }}>
-                  Last Raw Hex (preview)
-                </h3>
+              <div>
+                <h3>Last Raw Hex</h3>
                 <div
                   style={{
-                    fontSize: "0.7rem",
-                    maxHeight: 160,
-                    overflowY: "auto",
                     background: "#050505",
-                    borderRadius: 8,
+                    borderRadius: 6,
                     border: "1px solid #333",
                     padding: 8,
+                    maxHeight: 160,
+                    overflowY: "auto",
+                    fontSize: "0.7rem",
                     wordBreak: "break-all"
                   }}
                 >

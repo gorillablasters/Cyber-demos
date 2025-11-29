@@ -1,6 +1,4 @@
-
 version: "3.9"
-
 services:
   doomsat:
     build: ./doomsat
@@ -9,7 +7,6 @@ services:
       - "7000:7000"
     volumes:
       - ./doomsat/memory:/opt/doomsat/memory
-
   backend:
     build: ./backend
     container_name: doom-backend
@@ -20,13 +17,10 @@ services:
       - doomsat
     ports:
       - "8000:8000"
-
   frontend:
     build: ./frontend
     container_name: doom-frontend
     depends_on:
       - backend
-    environment:
-      - NEXT_PUBLIC_API_BASE=http://localhost:8000
     ports:
       - "3000:3000"

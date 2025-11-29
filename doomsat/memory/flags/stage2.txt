@@ -1,1 +1,1 @@
-DOOM{stage2_placeholder}
+DOOM{only}

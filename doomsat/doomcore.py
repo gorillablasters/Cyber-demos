@@ -1,4 +1,3 @@
-
 import socket, time, struct, threading
 from pathlib import Path
 from protocol import HEADER, TYPE_POWER, TYPE_TEMP, TYPE_DANGER, TYPE_MASK, DANGER_MASK
@@ -31,14 +30,12 @@ def telemetry_loop(conn):
         except:
             break
         time.sleep(0.4)
-
         t = struct.pack("<f", 12.3 + (count % 5))
         try:
             conn.send(build_frame(TYPE_TEMP, t))
         except:
             break
         time.sleep(0.4)
-
         if count % 11 == 0:
             try:
                 secret = (FLAGS_DIR / "stage2.txt").read_bytes().strip()
@@ -61,7 +58,6 @@ def handle_client(conn, addr):
         pass
     th = threading.Thread(target=telemetry_loop, args=(conn,), daemon=True)
     th.start()
-
     while True:
         try:
             data = conn.recv(4096)

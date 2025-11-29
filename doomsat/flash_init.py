@@ -1,5 +1,3 @@
-
-import os
 from pathlib import Path
 
 MEM = Path("/opt/doomsat/memory")
@@ -12,7 +10,7 @@ stages = {
     "stage2.txt": "DOOM{stage2_xor_telemetry_decoded}\n",
     "stage3.txt": "DOOM{stage3_flash_leakage}\n",
     "stage4.txt": "DOOM{stage4_weak_fw_sig_bypass}\n",
-    "stage5.txt": "DOOM{stage5_coords_decrypted}\n"
+    "stage5.txt": "DOOM{stage5_coords_decrypted}\n",
 }
 for fname, content in stages.items():
     p = flags_dir / fname

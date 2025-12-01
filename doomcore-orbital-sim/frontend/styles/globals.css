@@ -1,0 +1,18 @@
+html, body {
+  padding: 0;
+  margin: 0;
+  background: #000;
+  color: #00ff66;
+  font-family: "Share Tech Mono", monospace;
+  overflow-x: hidden;
+}
+
+a {
+  color: #00ff66;
+  text-decoration: none;
+}
+
+* {
+  box-sizing: border-box;
+  text-shadow: 0 0 6px #00ff4488;
+}

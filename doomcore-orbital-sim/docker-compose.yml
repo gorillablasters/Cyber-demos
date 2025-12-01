@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+
+  backend:
+    build: ./backend
+    container_name: doomcore_backend
+    restart: unless-stopped
+    environment:
+      - DOOM_ENV=prod
+    networks:
+      - doomnet
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    container_name: doomcore_frontend
+    depends_on:
+      - backend
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    networks:
+      - doomnet
+    ports:
+      - "3000:3000"
+
+  doomgs-dist:
+    build:
+      context: ./doomgs-client
+      dockerfile: Dockerfile.dist
+    container_name: doomgs_dist
+    environment:
+      - DOOMGS_BASE_URL=http://localhost:8000
+    networks:
+      - doomnet
+    ports:
+      - "8080:8080"
+networks:
+  doomnet:
+    driver: bridge

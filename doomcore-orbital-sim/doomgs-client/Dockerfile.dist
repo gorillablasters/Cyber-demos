@@ -1,0 +1,48 @@
+FROM python:3.11-slim AS builder
+
+WORKDIR /src
+
+COPY . .
+
+RUN pip install build && python -m build --wheel
+
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN mkdir -p /app/downloads
+
+COPY --from=builder /src/dist/*.whl /app/downloads/doomgs-client.whl
+
+COPY DoomGS_Ops_Manual.pdf /app/downloads/DoomGS_Ops_Manual.pdf
+
+RUN pip install flask
+
+RUN cat << 'EOF' > /app/server.py
+from flask import Flask, send_from_directory
+app = Flask(__name__)
+
+@app.route("/")
+def index():
+    return """
+    <html><body style='background:#000; color:#0f0; font-family:monospace'>
+    <h2>DOOMGS Client Downloads</h2>
+    <ul>
+      <li><a href="/downloads/doomgs-client.whl">doomgs-client.whl</a></li>
+      <li><a href="/downloads/DoomGS_Ops_Manual.pdf">DoomGS_Ops_Manual.pdf</a></li>
+    </ul>
+    </body></html>
+    """
+
+@app.route("/downloads/<path:path>")
+def download_file(path):
+    return send_from_directory("/app/downloads", path, as_attachment=True)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)
+EOF
+
+EXPOSE 8080
+
+CMD ["python", "server.py"]

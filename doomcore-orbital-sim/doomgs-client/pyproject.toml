@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "doomgs"
+version = "0.1.0"
+description = "MF DOOM-themed groundstation client for Doomcore Orbital Sim"
+dependencies = ["requests"]
+
+[project.scripts]
+doomgs = "doomgs.cli:main"

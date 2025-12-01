@@ -1,0 +1,24 @@
+body::after {
+  pointer-events: none;
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0,255,0,0.04) 0px,
+    rgba(0,255,0,0.04) 2px,
+    rgba(0,0,0,0.05) 3px
+  );
+  mix-blend-mode: overlay;
+  z-index: 9999;
+}
+
+@keyframes crt-flicker {
+  0% { opacity: .97; }
+  50% { opacity: .95; }
+  100% { opacity: .97; }
+}
+
+body {
+  animation: crt-flicker 0.12s infinite;
+}

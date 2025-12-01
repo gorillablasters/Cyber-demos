@@ -13,7 +13,7 @@ WORKDIR /app
 
 RUN mkdir -p /app/downloads
 
-COPY --from=builder /src/dist/*.whl /app/downloads/doomgs-client.whl
+COPY --from=builder /src/dist/*.whl /app/downloads/
 
 COPY DoomGS_Ops_Manual.pdf /app/downloads/DoomGS_Ops_Manual.pdf
 
@@ -29,7 +29,7 @@ def index():
     <html><body style='background:#000; color:#0f0; font-family:monospace'>
     <h2>DOOMGS Client Downloads</h2>
     <ul>
-      <li><a href="/downloads/doomgs-client.whl">doomgs-client.whl</a></li>
+      <li><a href="/downloads/doomgs-0.1.0-py3-none-any.whl">doomgs-client.whl</a></li>
       <li><a href="/downloads/DoomGS_Ops_Manual.pdf">DoomGS_Ops_Manual.pdf</a></li>
     </ul>
     </body></html>

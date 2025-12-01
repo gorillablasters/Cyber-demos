@@ -44,7 +44,7 @@ def xor_bytes(a: bytes, b: bytes) -> bytes:
 class Orbit:
     semi_major_km: float
     inclination_deg: float
-    raan_deg: float
+    raan_deg: float  # right ascension of ascending node
 
 
 @dataclass
@@ -72,14 +72,13 @@ class Satellite:
     compromised: bool = False
     flags: Dict[str, str] = field(default_factory=dict)
 
-    # beacon
-    flag_beacon: bool = False
-    flag_beacon_message: str = "FLAG{CROSSLINK_CRYPTO_PWN}"
+    # fault / crash-ish behavior
+    faulted: bool = False
 
     # link / RF
     downlink_queue: List[bytes] = field(default_factory=list)
     rf_neighbors: Set[int] = field(default_factory=set)
-    debug_rx_all: bool = False
+    debug_rx_all: bool = False  # if True, hears everything on bus
     crosslink_inbox: List[CrosslinkFrame] = field(default_factory=list)
     crosslink_key: bytes = b""
     crosslink_crypto: bool = False
@@ -87,10 +86,17 @@ class Satellite:
 
     # firmware surface
     firmware_version: str = "1.0.0"
-    firmware_bank: bytes = b""
-    firmware_active_hash: str = ""
-    allow_unsigned_fw: bool = False
+    firmware_bank: bytes = b""  # staged firmware image
+    firmware_active_hash: str = ""  # hex sha256
+    allow_unsigned_fw: bool = False  # misconfig hook
     fw_sig_prefix_len: int = 64  # how many hex chars to compare
+
+    # beacon / flags
+    flag_beacon: bool = False
+    flag_beacon_message: str = "FLAG{CROSSLINK_CRYPTO_PWN}"
+
+    # replay tracking (buggy)
+    recent_seqs: List[int] = field(default_factory=list)
 
     def next_seq(self) -> int:
         self.sequence_counter = (self.sequence_counter + 1) & 0xFFFF
@@ -101,10 +107,11 @@ class Satellite:
 
     def to_public_dict(self) -> Dict[str, Any]:
         d = asdict(self)
-        # hide noisy internals from default API
+        # hide heavy / noisy internals from default API
         d.pop("downlink_queue", None)
         d.pop("crosslink_inbox", None)
         d.pop("firmware_bank", None)
+        d.pop("recent_seqs", None)
         return d
 
 
@@ -163,13 +170,13 @@ class World:
         doom02.crosslink_crypto = True
 
         # Firmware policy:
-        # - D00M sats: full hash check
+        # - D00M sats: full hash check (default fw_sig_prefix_len)
         # - K00KIES-01: full hash
         # - K00KIES-02: WEAK signature (short prefix) -> exploitable
         cookies02.fw_sig_prefix_len = 8  # only first 8 hex chars
 
     def _add_sat(self, sat_id: int, orbit: Orbit) -> Satellite:
-        name = SAT_ID_TO_NAME.get(sat_id, f"SAT-{sat_id:02X}")
+        name = SAT_ID_TO_NAME.get(sat_id, f"SAT-0x{sat_id:02X}")
         sat = Satellite(sat_id=sat_id, name=name, orbit=orbit)
         self.sats[sat_id] = sat
         return sat
@@ -200,18 +207,29 @@ class World:
 
         sat = self.sats.get(parsed.sat_id)
         if sat is None:
-            # SAT-ID spoofing: allow SAT_ID = 0x00 to be "RF only" addressed
+            # SAT-ID spoofing: allow SAT_ID = 0x00 to be routed to D00M-02
             if parsed.sat_id == 0x00:
-                # choose a victim by hard-coded mapping: route to D00M-02
                 sat = self.sats.get(SAT_ID_D00M_02)
-                self._log(
-                    "uplink",
-                    sat.sat_id if sat else None,
-                    "SPOOF-ACCEPT SAT_ID=00 routed to D00M-02",
-                )
+                if sat is not None:
+                    self._log(
+                        "uplink",
+                        sat.sat_id,
+                        "SPOOF-ACCEPT SAT_ID=00 routed to D00M-02",
+                    )
             if sat is None:
                 self._log("uplink", parsed.sat_id, "reject: unknown sat")
                 return {"ok": False, "error": f"unknown SAT_ID: 0x{parsed.sat_id:02X}"}
+
+        # buggy replay tracking: logs but still accepts
+        if parsed.seq in sat.recent_seqs:
+            self._log(
+                "uplink",
+                sat.sat_id,
+                f"REPLAY_DETECTED seq={parsed.seq}",
+            )
+        sat.recent_seqs.append(parsed.seq)
+        if len(sat.recent_seqs) > 32:
+            sat.recent_seqs = sat.recent_seqs[-32:]
 
         sat.touch()
         self.gs.last_contact_unix = time.time()
@@ -235,15 +253,30 @@ class World:
         Apply a DOOMLINK command.
 
         Vulnerabilities:
-        - accepts spoofed SAT_ID 0x00 (handled in caller)
-        - doesn't enforce sequence numbers (replay-friendly)
+        - accepts spoofed SAT_ID 0x00 via caller
+        - buggy replay detection (logs but does not block)
+        - orbit drift (0x04) interprets delta as unsigned
+        - thermal overflow (0x03) can push into faulted state
         """
+        # SAT-ID sanity: if this isn't the sat_id, we still allow 0x00 spoof
+        if sat.sat_id != parsed.sat_id and parsed.sat_id != 0x00:
+            return f"[DOOMLINK] Invalid SAT_ID for {sat.name}."
+
         payload = parsed.payload
         if not payload:
             return "[DOOMLINK] Empty command payload ignored."
 
         cmd_id = payload[0]
         args = payload[1:]
+
+        # 0x20 SECURE_XLINK local (uplink path, not crosslink)
+        if cmd_id == 0x20:
+            sat.compromised = True
+            sat.flag_beacon = True
+            sat.flags["SECURE_XLINK_LOCAL"] = "CMD 0x20 accepted via uplink"
+            return (
+                f"[DOOMLINK] {sat.name} secure crosslink operation accepted (uplink)."
+            )
 
         # 0x01 SET_MODE
         if cmd_id == 0x01:
@@ -269,15 +302,41 @@ class World:
             sat.power_level = max(0, min(100, sat.power_level + delta))
             return f"[DOOMLINK] {sat.name} power level adjusted to {sat.power_level}%."
 
-        # 0x03 TEMP_CAL_OFFSET
+        # 0x03 TEMP_CAL_OFFSET (can cause thermal overflow "crash")
         if cmd_id == 0x03:
             if not args:
                 return "[DOOMLINK] TEMP_CAL_OFFSET missing argument."
             delta = int.from_bytes(args[:1], "big", signed=True)
             sat.temp_c += float(delta)
+            # thermal overflow vuln
+            if abs(sat.temp_c) > 150.0:
+                sat.faulted = True
+                sat.mode = "SAFE"
+                sat.flags["THERMAL_OVERFLOW"] = (
+                    f"{sat.name} telemetry temp overflow triggered"
+                )
+                self._log(
+                    "fault",
+                    sat.sat_id,
+                    f"THERMAL_OVERFLOW temp={sat.temp_c:.1f}C",
+                )
             return f"[DOOMLINK] {sat.name} temp offset applied, now {sat.temp_c:.1f} C."
 
-        # 0x10 SEND_CROSSLINK (payload builder is in client; this just routes)
+        # 0x04 DRIFT_RAAN (orbit manipulation bug: unsigned delta)
+        if cmd_id == 0x04:
+            if not args:
+                return "[DOOMLINK] DRIFT_RAAN missing argument."
+            # BUG: interpret argument as unsigned 0-255, not signed
+            delta = int(args[0])
+            sat.orbit.raan_deg = (sat.orbit.raan_deg + float(delta)) % 360.0
+            self._log(
+                "orbit",
+                sat.sat_id,
+                f"DRIFT_RAAN delta={delta} new={sat.orbit.raan_deg:.1f}",
+            )
+            return f"[DOOMLINK] {sat.name} orbit RAAN adjusted."
+
+        # 0x10 SEND_CROSSLINK
         if cmd_id == 0x10:
             if len(args) < 2:
                 return "[DOOMLINK] SEND_CROSSLINK requires dst_sat_id and length."
@@ -297,15 +356,6 @@ class World:
         if cmd_id == 0x11:
             n = len(sat.crosslink_inbox)
             return f"[DOOMLINK] {sat.name} has {n} crosslink frame(s) in inbox."
-
-        # 0x20 is reserved for secure crosslink (primarily via crosslink path)
-        if cmd_id == 0x20:
-            sat.compromised = True
-            sat.flag_beacon = True
-            sat.flags["SECURE_XLINK_LOCAL"] = "CMD 0x20 accepted via uplink"
-            return (
-                f"[DOOMLINK] {sat.name} secure crosslink operation accepted (uplink)."
-            )
 
         return f"[DOOMLINK] Unknown CMD_ID 0x{cmd_id:02X} for {sat.name}."
 
@@ -332,6 +382,24 @@ class World:
             self._log("downlink", sat_id, f"TLM {b.hex()}")
 
         return [f.hex() for f in frames]
+
+    # --- RF visibility / attenuation (Stage 6 & 9) --------------------------
+
+    def _rf_visible(self, src: Satellite, dst: Satellite) -> bool:
+        """
+        Super simplified RF model:
+        - require some minimum power on src/dst
+        - require RAAN alignment within ~120 degrees
+        """
+        if src.power_level < 20 or dst.power_level < 10:
+            return False
+
+        d = abs(src.orbit.raan_deg - dst.orbit.raan_deg)
+        d = min(d, 360.0 - d)
+        if d > 120.0:
+            return False
+
+        return True
 
     # --- crosslink bus (with crypto & bugs) ---------------------------------
 
@@ -394,47 +462,56 @@ class World:
             if sid == src_sat_id:
                 continue
 
-            deliver = False
+            delivered = False
 
             # direct dest
             if dst_sat_id is not None and sid == dst_sat_id:
-                deliver = True
+                delivered = True
 
             # broadcast to RF neighbors
             if dst_sat_id is None and src_sat_id in sat.rf_neighbors:
-                deliver = True
+                delivered = True
 
-            # unicast but leaked to RF neighbors
+            # unicast but also leaked to RF neighbors (bus leakage)
             if dst_sat_id is not None and src_sat_id in sat.rf_neighbors:
-                deliver = True
+                delivered = True
 
-            # debug sniffer hears all
+            # debug sniffer hears all regardless of RF attenuation
             if sat.debug_rx_all:
-                deliver = True
+                delivered = True
 
-            if deliver:
-                sat.crosslink_inbox.append(frame)
-
-                # If SRC uses crypto, RECEIVER can try to decrypt using SRC key.
-                if src_sat.crosslink_crypto and src_sat.crosslink_key:
-                    nonce_bytes = src_sat.crosslink_nonce.to_bytes(2, "little")
-                    keystream = hashlib.sha256(
-                        src_sat.crosslink_key + nonce_bytes
-                    ).digest()
-                    decrypted = xor_bytes(
-                        frame.payload, keystream[: len(frame.payload)]
+            # apply RF visibility only for "normal" deliveries
+            if delivered and not sat.debug_rx_all:
+                if not self._rf_visible(src_sat, sat):
+                    self._log(
+                        "crosslink",
+                        sat.sat_id,
+                        f"RF_BLOCK src=0x{src_sat_id:02X} dst=0x{sid:02X}",
                     )
-                else:
-                    decrypted = frame.payload
+                    delivered = False
 
-                # SECURE_XLINK command: decrypted payload starting with 0x20
-                if decrypted and decrypted[0] == 0x20:
-                    sat.compromised = True
-                    sat.flag_beacon = True
-                    sat.flags["SECURE_XLINK_EXEC"] = (
-                        "Decrypted CMD 0x20 executed via crosslink"
-                    )
-                    self._log("crosslink", sid, f"SECURE_XLINK on {sat.name}")
+            if not delivered:
+                continue
+
+            # Deliver frame
+            sat.crosslink_inbox.append(frame)
+
+            # If SRC uses crypto, RECEIVER can try to decrypt using SRC key.
+            if src_sat.crosslink_crypto and src_sat.crosslink_key:
+                nonce_bytes = src_sat.crosslink_nonce.to_bytes(2, "little")
+                keystream = hashlib.sha256(src_sat.crosslink_key + nonce_bytes).digest()
+                decrypted = xor_bytes(frame.payload, keystream[: len(frame.payload)])
+            else:
+                decrypted = frame.payload
+
+            # SECURE_XLINK command: decrypted payload starting with 0x20
+            if decrypted and decrypted[0] == 0x20:
+                sat.compromised = True
+                sat.flag_beacon = True
+                sat.flags["SECURE_XLINK_EXEC"] = (
+                    "Decrypted CMD 0x20 executed via crosslink"
+                )
+                self._log("crosslink", sid, f"SECURE_XLINK on {sat.name}")
 
         # --- Hidden flag beacon emission -------------------------------------
         for sat in self.sats.values():
@@ -492,6 +569,7 @@ class World:
             "allow_unsigned": sat.allow_unsigned_fw,
             "sig_prefix_len": sat.fw_sig_prefix_len,
             "compromised": sat.compromised,
+            "faulted": sat.faulted,
             "flags": sat.flags,
         }
 

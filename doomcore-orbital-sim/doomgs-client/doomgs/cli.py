@@ -7,6 +7,10 @@ from typing import Optional
 from .client import DoomGSClient
 from . import radio
 from . import secure
+from . import tui as tui_mod
+
+
+# --- command implementations -------------------------------------------------
 
 
 def cmd_world(args: argparse.Namespace) -> None:
@@ -17,38 +21,87 @@ def cmd_world(args: argparse.Namespace) -> None:
 
 def cmd_events(args: argparse.Namespace) -> None:
     c = DoomGSClient(base_url=args.base_url)
-    data = c.events(limit=args.limit)
-    print(json.dumps(data, indent=2))
+    res = c.events(since=args.since, limit=args.limit)
+    print(json.dumps(res, indent=2))
 
 
 def cmd_uplink_set_mode(args: argparse.Namespace) -> None:
     c = DoomGSClient(base_url=args.base_url)
-    res = c.uplink_set_mode(args.sat_id, args.mode.upper())
+    mode = args.mode.upper()
+    if args.seq is None:
+        # normal path: let client manage seq
+        res = c.uplink_set_mode(args.sat_id, mode)  # type: ignore[arg-type]
+    else:
+        # replay path: manual seq override
+        payload = radio.build_set_mode_payload(mode)  # type: ignore[arg-type]
+        frame = radio.build_cmd_frame(args.sat_id, args.seq, payload)
+        res = c.uplink_frame(frame)
     print(json.dumps(res, indent=2))
 
 
 def cmd_uplink_nudge_power(args: argparse.Namespace) -> None:
     c = DoomGSClient(base_url=args.base_url)
-    res = c.uplink_nudge_power(args.sat_id, args.delta)
+    if args.seq is None:
+        res = c.uplink_nudge_power(args.sat_id, args.delta)
+    else:
+        payload = radio.build_nudge_power_payload(args.delta)
+        frame = radio.build_cmd_frame(args.sat_id, args.seq, payload)
+        res = c.uplink_frame(frame)
     print(json.dumps(res, indent=2))
 
 
 def cmd_uplink_temp_offset(args: argparse.Namespace) -> None:
     c = DoomGSClient(base_url=args.base_url)
-    res = c.uplink_temp_offset(args.sat_id, args.delta)
+    if args.seq is None:
+        res = c.uplink_temp_offset(args.sat_id, args.delta)
+    else:
+        payload = radio.build_temp_offset_payload(args.delta)
+        frame = radio.build_cmd_frame(args.sat_id, args.seq, payload)
+        res = c.uplink_frame(frame)
     print(json.dumps(res, indent=2))
 
 
-def cmd_downlink(args: argparse.Namespace) -> None:
+def cmd_uplink_drift_raan(args: argparse.Namespace) -> None:
+    """
+    Stage 9 helper: orbit drift manipulation.
+    Sends CMD_ID 0x04 with a single unsigned delta byte.
+    """
     c = DoomGSClient(base_url=args.base_url)
-    sat_id: Optional[int] = args.sat_id
-    res = c.downlink(sat_id=sat_id, max_frames=args.max_frames)
+    sat_id = args.sat_id
+    delta = args.delta & 0xFF
+    if args.seq is None:
+        # use client's internal seq
+        seq = c._next_seq(sat_id)  # type: ignore[attr-defined]
+    else:
+        seq = args.seq
+    payload = bytes([0x04, delta])
+    frame = radio.build_cmd_frame(sat_id, seq, payload)
+    res = c.uplink_frame(frame)
+    print(json.dumps(res, indent=2))
+
+
+def cmd_uplink_raw(args: argparse.Namespace) -> None:
+    """
+    Send a raw DOOMLINK frame (full header+payload+CRC) in hex.
+    Great for replay and fuzzing. You are responsible for CRC/length.
+    """
+    c = DoomGSClient(base_url=args.base_url)
+    try:
+        frame = bytes.fromhex(args.frame_hex)
+    except ValueError as e:
+        raise SystemExit(f"Invalid hex: {e}")
+    res = c.uplink_frame(frame)
     print(json.dumps(res, indent=2))
 
 
 def cmd_xlink_send(args: argparse.Namespace) -> None:
     c = DoomGSClient(base_url=args.base_url)
-    dst = None if args.broadcast else args.dst_sat_id
+    dst: Optional[int]
+    if args.dst.lower() in ("b", "broadcast", "*"):
+        dst = None
+    else:
+        # allow decimal or 0xNN
+        dst = int(args.dst, 0)
     res = c.crosslink_send(
         src_sat_id=args.src_sat_id,
         dst_sat_id=dst,
@@ -65,130 +118,213 @@ def cmd_xlink_dump(args: argparse.Namespace) -> None:
 
 def cmd_firmware_status(args: argparse.Namespace) -> None:
     c = DoomGSClient(base_url=args.base_url)
-    res = c.firmware_status(args.sat_id)
+    res = c.firmware_status(sat_id=args.sat_id)
     print(json.dumps(res, indent=2))
 
 
-def cmd_firmware_download(args: argparse.Namespace) -> None:
+def cmd_firmware_upload_chunk(args: argparse.Namespace) -> None:
     c = DoomGSClient(base_url=args.base_url)
-    res = c.firmware_download(args.sat_id)
-    print(json.dumps(res, indent=2))
-
-
-def cmd_firmware_upload_hex(args: argparse.Namespace) -> None:
-    c = DoomGSClient(base_url=args.base_url)
-    chunk = bytes.fromhex(args.chunk_hex.strip())
-    res = c.firmware_upload_chunk(args.sat_id, chunk)
+    try:
+        chunk = bytes.fromhex(args.chunk_hex)
+    except ValueError as e:
+        raise SystemExit(f"Invalid hex: {e}")
+    res = c.firmware_upload_chunk(sat_id=args.sat_id, chunk=chunk)
     print(json.dumps(res, indent=2))
 
 
 def cmd_firmware_apply(args: argparse.Namespace) -> None:
     c = DoomGSClient(base_url=args.base_url)
-    res = c.firmware_apply(args.sat_id, args.claimed_hash)
+    res = c.firmware_apply(sat_id=args.sat_id, claimed_hash=args.claimed_hash)
+    print(json.dumps(res, indent=2))
+
+
+def cmd_firmware_download(args: argparse.Namespace) -> None:
+    c = DoomGSClient(base_url=args.base_url)
+    res = c.firmware_download(sat_id=args.sat_id)
     print(json.dumps(res, indent=2))
 
 
 def cmd_secure_xlink_build(args: argparse.Namespace) -> None:
-    key = args.key.encode()
+    key = bytes.fromhex(args.key_hex)
     nonce = args.nonce
-    plain = bytes.fromhex(args.plain_hex.strip())
+    plain = bytes.fromhex(args.plain_hex)
     cipher = secure.build_secure_crosslink(key, nonce, plain)
-    print(cipher.hex())
+    out = {
+        "key_hex": args.key_hex,
+        "nonce": nonce,
+        "plain_hex": args.plain_hex,
+        "cipher_hex": cipher.hex(),
+    }
+    print(json.dumps(out, indent=2))
 
 
 def cmd_tui(args: argparse.Namespace) -> None:
-    from . import tui
+    tui_mod.run_tui(base_url=args.base_url)
 
-    tui.run_tui(base_url=args.base_url)
+
+# --- parser -----------------------------------------------------------------
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="doomgs")
+    p = argparse.ArgumentParser(
+        prog="doomgs",
+        description="MF DOOM-themed groundstation client for Doomcore Orbital Sim",
+    )
     p.add_argument(
         "--base-url",
+        help="Override DOOMGS_BASE_URL (default http://localhost:8000 or env DOOMGS_BASE_URL)",
         default=None,
-        help="Backend base URL (default: env DOOMGS_BASE_URL or http://localhost:8000)",
     )
+
     sub = p.add_subparsers(dest="command", required=True)
 
     # world
-    sp = sub.add_parser("world", help="Show satellite + GS status")
+    sp = sub.add_parser("world", help="Show world / constellation status")
     sp.set_defaults(func=cmd_world)
 
     # events
-    sp = sub.add_parser("events", help="Show recent RF/events")
-    sp.add_argument("--limit", type=int, default=50)
+    sp = sub.add_parser("events", help="Show recent events log")
+    sp.add_argument(
+        "--since",
+        type=float,
+        default=None,
+        help="Only events after this UNIX timestamp",
+    )
+    sp.add_argument("--limit", type=int, default=200, help="Max events to return")
     sp.set_defaults(func=cmd_events)
 
-    # uplink set-mode
-    sp = sub.add_parser("uplink-set-mode", help="Send SET_MODE uplink")
-    sp.add_argument("sat_id", type=int)
-    sp.add_argument("mode", choices=["SAFE", "NOMINAL", "SCIENCE", "DIAGNOSTIC"])
+    # uplink-set-mode
+    sp = sub.add_parser("uplink-set-mode", help="Send SET_MODE command to a satellite")
+    sp.add_argument("sat_id", type=int, help="Satellite ID (e.g. 1, 2, 17, 18)")
+    sp.add_argument(
+        "mode",
+        choices=[
+            "SAFE",
+            "NOMINAL",
+            "SCIENCE",
+            "DIAGNOSTIC",
+            "safe",
+            "nominal",
+            "science",
+            "diagnostic",
+        ],
+        help="Mode name",
+    )
+    sp.add_argument(
+        "--seq",
+        type=int,
+        default=None,
+        help="Optional explicit sequence number (for replay experiments)",
+    )
     sp.set_defaults(func=cmd_uplink_set_mode)
 
-    # uplink nudge power
-    sp = sub.add_parser("uplink-nudge-power", help="Adjust power level")
+    # uplink-nudge-power
+    sp = sub.add_parser(
+        "uplink-nudge-power", help="Adjust satellite power level by a delta"
+    )
     sp.add_argument("sat_id", type=int)
-    sp.add_argument("delta", type=int)
+    sp.add_argument("delta", type=int, help="Delta in percent (e.g. -10, +5)")
+    sp.add_argument(
+        "--seq",
+        type=int,
+        default=None,
+        help="Optional explicit sequence number (for replay experiments)",
+    )
     sp.set_defaults(func=cmd_uplink_nudge_power)
 
-    # uplink temp offset
-    sp = sub.add_parser("uplink-temp-offset", help="Adjust temp offset")
+    # uplink-temp-offset
+    sp = sub.add_parser(
+        "uplink-temp-offset", help="Apply temp calibration offset to satellite"
+    )
     sp.add_argument("sat_id", type=int)
-    sp.add_argument("delta", type=int)
+    sp.add_argument("delta", type=int, help="Delta in degrees C (approx)")
+    sp.add_argument(
+        "--seq",
+        type=int,
+        default=None,
+        help="Optional explicit sequence number (for replay experiments)",
+    )
     sp.set_defaults(func=cmd_uplink_temp_offset)
 
-    # downlink
-    sp = sub.add_parser("downlink", help="Pop telemetry frames")
-    sp.add_argument("--sat-id", type=int, default=None)
-    sp.add_argument("--max-frames", type=int, default=10)
-    sp.set_defaults(func=cmd_downlink)
+    # uplink-drift-raan (Stage 9)
+    sp = sub.add_parser(
+        "uplink-drift-raan", help="Adjust orbit RAAN via DRIFT_RAAN command (Stage 9)"
+    )
+    sp.add_argument("sat_id", type=int)
+    sp.add_argument(
+        "delta",
+        type=int,
+        help="Delta degrees (0-255). Interpreted unsigned by the satellite (bug).",
+    )
+    sp.add_argument(
+        "--seq",
+        type=int,
+        default=None,
+        help="Optional explicit sequence number (for replay experiments)",
+    )
+    sp.set_defaults(func=cmd_uplink_drift_raan)
 
-    # crosslink send
-    sp = sub.add_parser("xlink-send", help="Send crosslink frame (raw payload hex)")
-    sp.add_argument("src_sat_id", type=int)
-    sp.add_argument("--dst-sat-id", type=int)
-    sp.add_argument("--broadcast", action="store_true")
-    sp.add_argument("payload_hex", help="hex payload, e.g. 646f6f6d")
+    # uplink-raw (new)
+    sp = sub.add_parser("uplink-raw", help="Send a raw DOOMLINK frame (hex)")
+    sp.add_argument("frame_hex", help="Full DOOMLINK frame in hex")
+    sp.set_defaults(func=cmd_uplink_raw)
+
+    # xlink-send
+    sp = sub.add_parser(
+        "xlink-send", help="Send a crosslink frame from one sat to another"
+    )
+    sp.add_argument("src_sat_id", type=int, help="Source satellite ID")
+    sp.add_argument(
+        "dst",
+        help="Destination satellite ID (e.g. 1, 0x11) or 'broadcast'",
+    )
+    sp.add_argument(
+        "payload_hex", help="Crosslink payload hex (plain; sim encrypts if needed)"
+    )
     sp.set_defaults(func=cmd_xlink_send)
 
-    # crosslink dump
-    sp = sub.add_parser("xlink-dump", help="Dump crosslink inbox")
+    # xlink-dump
+    sp = sub.add_parser("xlink-dump", help="Dump crosslink inbox for a satellite")
     sp.add_argument("sat_id", type=int)
     sp.add_argument("--max-frames", type=int, default=20)
     sp.set_defaults(func=cmd_xlink_dump)
 
-    # firmware status
-    sp = sub.add_parser("firmware-status", help="Show firmware status")
+    # firmware-status
+    sp = sub.add_parser("firmware-status", help="Show firmware status for a satellite")
     sp.add_argument("sat_id", type=int)
     sp.set_defaults(func=cmd_firmware_status)
 
-    # firmware download
-    sp = sub.add_parser("firmware-download", help="Download staged firmware")
+    # firmware-upload-chunk
+    sp = sub.add_parser(
+        "firmware-upload-chunk", help="Upload a firmware chunk (hex) to a satellite"
+    )
+    sp.add_argument("sat_id", type=int)
+    sp.add_argument("chunk_hex", help="Firmware bytes in hex")
+    sp.set_defaults(func=cmd_firmware_upload_chunk)
+
+    # firmware-apply
+    sp = sub.add_parser(
+        "firmware-apply", help="Apply staged firmware with a claimed hash"
+    )
+    sp.add_argument("sat_id", type=int)
+    sp.add_argument("claimed_hash", help="Claimed firmware hash (hex string)")
+    sp.set_defaults(func=cmd_firmware_apply)
+
+    # firmware-download
+    sp = sub.add_parser(
+        "firmware-download", help="Download active firmware image for a satellite"
+    )
     sp.add_argument("sat_id", type=int)
     sp.set_defaults(func=cmd_firmware_download)
 
-    # firmware upload hex
-    sp = sub.add_parser("firmware-upload-hex", help="Upload firmware chunk as hex")
-    sp.add_argument("sat_id", type=int)
-    sp.add_argument("chunk_hex", help="hex bytes of firmware chunk")
-    sp.set_defaults(func=cmd_firmware_upload_hex)
-
-    # firmware apply
+    # secure-xlink-build
     sp = sub.add_parser(
-        "firmware-apply", help="Apply staged firmware with claimed hash"
+        "secure-xlink-build",
+        help="Build ciphertext matching the sim's secure crosslink scheme",
     )
-    sp.add_argument("sat_id", type=int)
-    sp.add_argument("claimed_hash", help="claimed hex hash (can be truncated)")
-    sp.set_defaults(func=cmd_firmware_apply)
-
-    # secure crosslink builder
-    sp = sub.add_parser(
-        "secure-xlink-build", help="Build secure ciphertext from key/nonce/plain_hex"
-    )
-    sp.add_argument("key", help="ASCII key (e.g. D00M02_KEY)")
-    sp.add_argument("nonce", type=int, help="nonce integer as seen in events")
-    sp.add_argument("plain_hex", help="plaintext bytes (hex)")
+    sp.add_argument("key_hex", help="Key bytes (hex) for keystream")
+    sp.add_argument("nonce", type=int, help="Nonce value (int)")
+    sp.add_argument("plain_hex", help="Plaintext bytes (hex)")
     sp.set_defaults(func=cmd_secure_xlink_build)
 
     # TUI

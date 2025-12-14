@@ -158,6 +158,20 @@ def cmd_secure_xlink_build(args: argparse.Namespace) -> None:
     print(json.dumps(out, indent=2))
 
 
+def cmd_secure_xlink_forge(args: argparse.Namespace) -> None:
+    known_plain = bytes.fromhex(args.known_plain_hex)
+    known_cipher = bytes.fromhex(args.known_cipher_hex)
+    desired_plain = bytes.fromhex(args.desired_plain_hex)
+    forged = secure.forge_secure_crosslink(known_plain, known_cipher, desired_plain)
+    out = {
+        "known_plain_hex": args.known_plain_hex,
+        "known_cipher_hex": args.known_cipher_hex,
+        "desired_plain_hex": args.desired_plain_hex,
+        "forged_cipher_hex": forged.hex(),
+    }
+    print(json.dumps(out, indent=2))
+
+
 def cmd_tui(args: argparse.Namespace) -> None:
     tui_mod.run_tui(base_url=args.base_url)
 
@@ -330,6 +344,15 @@ def build_parser() -> argparse.ArgumentParser:
     # TUI
     sp = sub.add_parser("tui", help="Launch curses TUI")
     sp.set_defaults(func=cmd_tui)
+
+    sp = sub.add_parser(
+        "secure-xlink-forge",
+        help="Forge ciphertext from (plain,cipher) leak without knowing the key",
+    )
+    sp.add_argument("known_plain_hex", help="Known plaintext (hex) from ENC log")
+    sp.add_argument("known_cipher_hex", help="Known ciphertext (hex) from ENC log")
+    sp.add_argument("desired_plain_hex", help="Desired plaintext to inject (hex)")
+    sp.set_defaults(func=cmd_secure_xlink_forge)
 
     return p
 

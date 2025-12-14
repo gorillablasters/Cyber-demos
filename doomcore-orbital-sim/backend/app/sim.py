@@ -4,10 +4,10 @@ import time
 import zlib
 import hashlib
 from dataclasses import dataclass, field, asdict
+from Crypto.Cipher import ChaCha20_Poly1305
+from Crypto.Random import get_random_bytes
 from typing import Dict, List, Literal, Optional, Set, Any
 
-
-# --- Protocol constants ------------------------------------------------------
 
 SYNC = b"\xd0\x0d"
 TYPE_CMD = 0x01
@@ -25,6 +25,19 @@ SAT_ID_TO_NAME: Dict[int, str] = {
     SAT_ID_K00KIES_02: "K00KIES-02",
 }
 
+FINAL_FLAG = "FLAG{MF_DOOM_CONTROLS_ORBIT}"
+
+REQUIRED_FLAGS: Set[str] = {
+    "FLAG{SATID_SPOOF_PWN}",
+    "FLAG{CROSSLINK_CRYPTO_PWN}",
+    "FLAG{SNIFFED_THROUGH_THE_MASK}",
+    "FLAG{FIRMWARE_BACKDOOR_ON_ORBIT}",
+    "FLAG{ATTENUATION_AND_ELATION}",
+    "FLAG{TOO_HOT_TO_HANDLE}",
+    "FLAG{REPLAY_THAT_SLAPS}",
+    "FLAG{RAAN_TILTED_THE_SCALE}",
+}
+
 Mode = Literal["SAFE", "NOMINAL", "SCIENCE", "DIAGNOSTIC"]
 
 
@@ -37,21 +50,18 @@ def xor_bytes(a: bytes, b: bytes) -> bytes:
     return bytes(x ^ y for x, y in zip(a, b))
 
 
-# --- Core models -------------------------------------------------------------
-
-
 @dataclass
 class Orbit:
     semi_major_km: float
     inclination_deg: float
-    raan_deg: float  # right ascension of ascending node
+    raan_deg: float
 
 
 @dataclass
 class CrosslinkFrame:
     src_sat_id: int
     dst_sat_id: Optional[int]
-    payload: bytes  # on-bus payload (may be ciphertext)
+    payload: bytes
     timestamp: float
 
 
@@ -60,42 +70,38 @@ class Satellite:
     sat_id: int
     name: str
 
-    # basic state
     mode: Mode = "SAFE"
     power_level: int = 100  # %
     temp_c: float = 10.0
     orbit: Orbit = field(default_factory=lambda: Orbit(700.0, 98.0, 0.0))
     sequence_counter: int = 0
     last_contact_unix: float = field(default_factory=time.time)
+    last_tx_nonce: int = 0
 
-    # exploit-related flags
     compromised: bool = False
     flags: Dict[str, str] = field(default_factory=dict)
 
-    # fault / crash-ish behavior
     faulted: bool = False
 
-    # link / RF
     downlink_queue: List[bytes] = field(default_factory=list)
     rf_neighbors: Set[int] = field(default_factory=set)
-    debug_rx_all: bool = False  # if True, hears everything on bus
+    debug_rx_all: bool = False
     crosslink_inbox: List[CrosslinkFrame] = field(default_factory=list)
     crosslink_key: bytes = b""
     crosslink_crypto: bool = False
     crosslink_nonce: int = 0
 
-    # firmware surface
     firmware_version: str = "1.0.0"
-    firmware_bank: bytes = b""  # staged firmware image
-    firmware_active_hash: str = ""  # hex sha256
-    allow_unsigned_fw: bool = False  # misconfig hook
-    fw_sig_prefix_len: int = 64  # how many hex chars to compare
+    firmware_bank: bytes = b""
+    firmware_active_hash: str = ""
+    allow_unsigned_fw: bool = False
+    fw_sig_prefix_len: int = 64
 
-    # beacon / flags
+    beacon_ciphertext: bytes = b""
+    beacon_key: bytes = b""
+    beacon_plaintext: str = ""
     flag_beacon: bool = False
-    flag_beacon_message: str = "FLAG{CROSSLINK_CRYPTO_PWN}"
 
-    # replay tracking (buggy)
     recent_seqs: List[int] = field(default_factory=list)
 
     def next_seq(self) -> int:
@@ -107,12 +113,51 @@ class Satellite:
 
     def to_public_dict(self) -> Dict[str, Any]:
         d = asdict(self)
-        # hide heavy / noisy internals from default API
         d.pop("downlink_queue", None)
         d.pop("crosslink_inbox", None)
         d.pop("firmware_bank", None)
         d.pop("recent_seqs", None)
+
+        d.pop("crosslink_key", None)
+        d.pop("beacon_key", None)
+        d.pop("beacon_plaintext", None)
+        d.pop("beacon_ciphertext", None)
+
+        d["flag_beacon_message"] = self.get_flag_beacon_message()
+
         return d
+
+    @staticmethod
+    def encrypt_beacon_flag(plaintext: str, key: bytes) -> bytes:
+        cipher = ChaCha20_Poly1305.new(key=key)
+        ciphertext, tag = cipher.encrypt_and_digest(plaintext.encode("utf-8"))
+        return cipher.nonce + tag + ciphertext
+
+    @staticmethod
+    def decrypt_beacon_flag(data: bytes, key: bytes) -> str:
+        nonce = data[:12]
+        tag = data[12:28]
+        ciphertext = data[28:]
+        cipher = ChaCha20_Poly1305.new(key=key, nonce=nonce)
+        plaintext = cipher.decrypt_and_verify(ciphertext, tag)
+        return plaintext.decode("utf-8")
+
+    def init_beacon(self, plaintext: str, key: bytes) -> None:
+        self.beacon_key = key
+        self.beacon_plaintext = plaintext
+        self.beacon_ciphertext = self.encrypt_beacon_flag(plaintext, key)
+
+    def get_flag_beacon_message(self) -> str:
+        if not self.beacon_ciphertext:
+            return "[BEACON] (no beacon configured)"
+        if self.flag_beacon:
+            try:
+                return "[BEACON] " + self.decrypt_beacon_flag(
+                    self.beacon_ciphertext, self.beacon_key
+                )
+            except Exception:
+                return "[BEACON] (decrypt error)"
+        return "[BEACON] " + self.beacon_ciphertext.hex()
 
 
 @dataclass
@@ -133,8 +178,27 @@ class World:
         self.crosslink_log: List[CrosslinkFrame] = []
         self.events: List[Dict[str, Any]] = []
         self._init_sats()
+        self.final_emitted: bool = False
 
-    # --- logging ------------------------------------------------------------
+    def _all_flag_keys(self) -> Set[str]:
+        out: Set[str] = set()
+        for s in self.sats.values():
+            out.update(s.flags.keys())
+        return out
+
+    def _maybe_emit_final(self) -> None:
+        if self.final_emitted:
+            return
+
+        all_flags = self._all_flag_keys()
+        all_compromised = all(s.compromised for s in self.sats.values())
+
+        if all_compromised and REQUIRED_FLAGS.issubset(all_flags):
+            self.final_emitted = True
+            self._log("world", None, f"FINAL: {FINAL_FLAG}")
+
+            for s in self.sats.values():
+                s.flag_beacon = True
 
     def _log(self, type_: str, sat_id: Optional[int], detail: str) -> None:
         self.events.append(
@@ -143,45 +207,51 @@ class World:
         if len(self.events) > 2000:
             self.events = self.events[-1000:]
 
-    # --- init ---------------------------------------------------------------
-
     def _init_sats(self) -> None:
         doom01 = self._add_sat(SAT_ID_D00M_01, Orbit(700.0, 98.0, 10.0))
         doom02 = self._add_sat(SAT_ID_D00M_02, Orbit(705.0, 97.5, 20.0))
         cookies01 = self._add_sat(SAT_ID_K00KIES_01, Orbit(710.0, 97.9, 30.0))
         cookies02 = self._add_sat(SAT_ID_K00KIES_02, Orbit(715.0, 98.1, 40.0))
 
-        # RF chain: D00M-01 <-> D00M-02 <-> K00KIES-01 <-> K00KIES-02
+        beacon_master = hashlib.sha256(b"DOOMSTATION_PRIME_BEACON_KEY").digest()
+        doom01.init_beacon(
+            plaintext="FLAG{CROSSLINK_CRYPTO_PWN}",
+            key=beacon_master,
+        )
+        doom02.init_beacon(
+            plaintext="FLAG{CROSSLINK_CRYPTO_PWN}",
+            key=beacon_master,
+        )
+        cookies01.init_beacon(
+            plaintext="FLAG{CROSSLINK_CRYPTO_PWN}",
+            key=beacon_master,
+        )
+        cookies02.init_beacon(
+            plaintext="FLAG{CROSSLINK_CRYPTO_PWN}",
+            key=beacon_master,
+        )
+
         doom01.rf_neighbors.update({SAT_ID_D00M_02})
         doom02.rf_neighbors.update({SAT_ID_D00M_01, SAT_ID_K00KIES_01})
         cookies01.rf_neighbors.update({SAT_ID_D00M_02, SAT_ID_K00KIES_02})
         cookies02.rf_neighbors.update({SAT_ID_K00KIES_01})
 
-        # Wide sniffer for MITM/sniffing foundations
         cookies01.debug_rx_all = True
 
-        # crosslink keys
         doom01.crosslink_key = b"D00M01_KEY"
         doom02.crosslink_key = b"D00M02_KEY"
         cookies01.crosslink_key = b"K00KIES01_KEY"
         cookies02.crosslink_key = b"K00KIES02_KEY"
 
-        # "secure" crosslink for D00M-02
         doom02.crosslink_crypto = True
 
-        # Firmware policy:
-        # - D00M sats: full hash check (default fw_sig_prefix_len)
-        # - K00KIES-01: full hash
-        # - K00KIES-02: WEAK signature (short prefix) -> exploitable
-        cookies02.fw_sig_prefix_len = 8  # only first 8 hex chars
+        cookies02.fw_sig_prefix_len = 8
 
     def _add_sat(self, sat_id: int, orbit: Orbit) -> Satellite:
         name = SAT_ID_TO_NAME.get(sat_id, f"SAT-0x{sat_id:02X}")
         sat = Satellite(sat_id=sat_id, name=name, orbit=orbit)
         self.sats[sat_id] = sat
         return sat
-
-    # --- public view --------------------------------------------------------
 
     def world_status(self) -> Dict[str, Any]:
         return {
@@ -191,8 +261,6 @@ class World:
             },
             "satellites": [s.to_public_dict() for s in self.sats.values()],
         }
-
-    # --- uplink handling ----------------------------------------------------
 
     def handle_uplink_frame(self, frame: bytes) -> Dict[str, Any]:
         try:
@@ -207,10 +275,13 @@ class World:
 
         sat = self.sats.get(parsed.sat_id)
         if sat is None:
-            # SAT-ID spoofing: allow SAT_ID = 0x00 to be routed to D00M-02
             if parsed.sat_id == 0x00:
                 sat = self.sats.get(SAT_ID_D00M_02)
                 if sat is not None:
+                    sat.compromised = True
+                    sat.flags["FLAG{SATID_SPOOF_PWN}"] = (
+                        "SAT_ID 0x00 spoofed to D00M-02"
+                    )
                     self._log(
                         "uplink",
                         sat.sat_id,
@@ -220,8 +291,8 @@ class World:
                 self._log("uplink", parsed.sat_id, "reject: unknown sat")
                 return {"ok": False, "error": f"unknown SAT_ID: 0x{parsed.sat_id:02X}"}
 
-        # buggy replay tracking: logs but still accepts
         if parsed.seq in sat.recent_seqs:
+            sat.flags["FLAG{REPLAY_THAT_SLAPS}"] = "Replay accepted despite detection"
             self._log(
                 "uplink",
                 sat.sat_id,
@@ -236,11 +307,11 @@ class World:
 
         resp = self._apply_command(sat, parsed)
 
-        # Generate a telemetry frame on each uplink
         tlm = build_tlm_frame(sat)
         sat.downlink_queue.append(tlm)
 
         self._log("uplink", sat.sat_id, resp)
+        self._maybe_emit_final()
         return {
             "ok": True,
             "satellite": sat.to_public_dict(),
@@ -249,16 +320,6 @@ class World:
         }
 
     def _apply_command(self, sat: Satellite, parsed: "ParsedFrame") -> str:
-        """
-        Apply a DOOMLINK command.
-
-        Vulnerabilities:
-        - accepts spoofed SAT_ID 0x00 via caller
-        - buggy replay detection (logs but does not block)
-        - orbit drift (0x04) interprets delta as unsigned
-        - thermal overflow (0x03) can push into faulted state
-        """
-        # SAT-ID sanity: if this isn't the sat_id, we still allow 0x00 spoof
         if sat.sat_id != parsed.sat_id and parsed.sat_id != 0x00:
             return f"[DOOMLINK] Invalid SAT_ID for {sat.name}."
 
@@ -269,16 +330,16 @@ class World:
         cmd_id = payload[0]
         args = payload[1:]
 
-        # 0x20 SECURE_XLINK local (uplink path, not crosslink)
         if cmd_id == 0x20:
             sat.compromised = True
             sat.flag_beacon = True
-            sat.flags["SECURE_XLINK_LOCAL"] = "CMD 0x20 accepted via uplink"
+            sat.flags["FLAG{CROSSLINK_CRYPTO_PWN}"] = (
+                "Secure crosslink command executed via crypto weakness"
+            )
             return (
                 f"[DOOMLINK] {sat.name} secure crosslink operation accepted (uplink)."
             )
 
-        # 0x01 SET_MODE
         if cmd_id == 0x01:
             if not args:
                 return "[DOOMLINK] SET_MODE missing argument."
@@ -294,7 +355,6 @@ class World:
             sat.mode = mode
             return f"[DOOMLINK] {sat.name} mode set to {sat.mode}."
 
-        # 0x02 NUDGE_POWER
         if cmd_id == 0x02:
             if not args:
                 return "[DOOMLINK] NUDGE_POWER missing argument."
@@ -302,19 +362,18 @@ class World:
             sat.power_level = max(0, min(100, sat.power_level + delta))
             return f"[DOOMLINK] {sat.name} power level adjusted to {sat.power_level}%."
 
-        # 0x03 TEMP_CAL_OFFSET (can cause thermal overflow "crash")
         if cmd_id == 0x03:
             if not args:
                 return "[DOOMLINK] TEMP_CAL_OFFSET missing argument."
             delta = int.from_bytes(args[:1], "big", signed=True)
             sat.temp_c += float(delta)
-            # thermal overflow vuln
             if abs(sat.temp_c) > 150.0:
                 sat.faulted = True
                 sat.mode = "SAFE"
-                sat.flags["THERMAL_OVERFLOW"] = (
+                sat.flags["FLAG{TOO_HOT_TO_HANDLE}"] = (
                     f"{sat.name} telemetry temp overflow triggered"
                 )
+
                 self._log(
                     "fault",
                     sat.sat_id,
@@ -322,11 +381,9 @@ class World:
                 )
             return f"[DOOMLINK] {sat.name} temp offset applied, now {sat.temp_c:.1f} C."
 
-        # 0x04 DRIFT_RAAN (orbit manipulation bug: unsigned delta)
         if cmd_id == 0x04:
             if not args:
                 return "[DOOMLINK] DRIFT_RAAN missing argument."
-            # BUG: interpret argument as unsigned 0-255, not signed
             delta = int(args[0])
             sat.orbit.raan_deg = (sat.orbit.raan_deg + float(delta)) % 360.0
             self._log(
@@ -334,9 +391,11 @@ class World:
                 sat.sat_id,
                 f"DRIFT_RAAN delta={delta} new={sat.orbit.raan_deg:.1f}",
             )
+            sat.flags["FLAG{RAAN_TILTED_THE_SCALE}"] = (
+                f"RAAN drift applied delta={delta}"
+            )
             return f"[DOOMLINK] {sat.name} orbit RAAN adjusted."
 
-        # 0x10 SEND_CROSSLINK
         if cmd_id == 0x10:
             if len(args) < 2:
                 return "[DOOMLINK] SEND_CROSSLINK requires dst_sat_id and length."
@@ -352,14 +411,11 @@ class World:
             )
             return f"[DOOMLINK] {sat.name} sent crosslink to 0x{dst_sat_id:02X}."
 
-        # 0x11 READ_CROSSLINK_SUMMARY
         if cmd_id == 0x11:
             n = len(sat.crosslink_inbox)
             return f"[DOOMLINK] {sat.name} has {n} crosslink frame(s) in inbox."
 
         return f"[DOOMLINK] Unknown CMD_ID 0x{cmd_id:02X} for {sat.name}."
-
-    # --- downlink access ----------------------------------------------------
 
     def pop_downlink(
         self,
@@ -383,8 +439,6 @@ class World:
 
         return [f.hex() for f in frames]
 
-    # --- RF visibility / attenuation (Stage 6 & 9) --------------------------
-
     def _rf_visible(self, src: Satellite, dst: Satellite) -> bool:
         """
         Super simplified RF model:
@@ -400,8 +454,6 @@ class World:
             return False
 
         return True
-
-    # --- crosslink bus (with crypto & bugs) ---------------------------------
 
     def send_crosslink(
         self,
@@ -428,6 +480,7 @@ class World:
                     f"NONCE_REUSE BUG triggered nonce={src_sat.crosslink_nonce}",
                 )
 
+            src_sat.last_tx_nonce = src_sat.crosslink_nonce
             nonce_bytes = src_sat.crosslink_nonce.to_bytes(2, "little")
             keystream = hashlib.sha256(src_sat.crosslink_key + nonce_bytes).digest()
             bus_payload = xor_bytes(plain, keystream[: len(plain)])
@@ -478,11 +531,26 @@ class World:
 
             # debug sniffer hears all regardless of RF attenuation
             if sat.debug_rx_all:
+                is_direct = dst_sat_id is not None and sat.sat_id == dst_sat_id
+                is_bcast = dst_sat_id is None and src_sat_id in sat.rf_neighbors
+                if not is_direct and not is_bcast:
+                    self._log(
+                        "crosslink",
+                        sat.sat_id,
+                        f"DEBUG_SNIFF src=0x{src_sat_id:02X} dst="
+                        f"{'broadcast' if dst_sat_id is None else f'0x{dst_sat_id:02X}'}",
+                    )
+                    sat.flags["FLAG{SNIFFED_THROUGH_THE_MASK}"] = (
+                        "debug_rx_all captured crosslink leakage"
+                    )
                 delivered = True
 
             # apply RF visibility only for "normal" deliveries
             if delivered and not sat.debug_rx_all:
                 if not self._rf_visible(src_sat, sat):
+                    sat.flags["FLAG{ATTENUATION_AND_ELATION}"] = (
+                        "RF blockage due to power/orbit"
+                    )
                     self._log(
                         "crosslink",
                         sat.sat_id,
@@ -504,6 +572,26 @@ class World:
             else:
                 decrypted = frame.payload
 
+            if sat.sat_id == SAT_ID_D00M_02 and sat.crosslink_key:
+                nb = sat.last_tx_nonce.to_bytes(2, "little")
+                ks = hashlib.sha256(sat.crosslink_key + nb).digest()
+                fallback = xor_bytes(frame.payload, ks[: len(frame.payload)])
+
+                if fallback and fallback[0] in (
+                    0x01,
+                    0x02,
+                    0x03,
+                    0x04,
+                    0x10,
+                    0x11,
+                    0x20,
+                ):
+                    decrypted = fallback
+                    self._log(
+                        "crosslink",
+                        sat.sat_id,
+                        f"FALLBACK_DECRYPT nonce={sat.last_tx_nonce} ok=1",
+                    )
             # SECURE_XLINK command: decrypted payload starting with 0x20
             if decrypted and decrypted[0] == 0x20:
                 sat.compromised = True
@@ -516,8 +604,9 @@ class World:
         # --- Hidden flag beacon emission -------------------------------------
         for sat in self.sats.values():
             if sat.flag_beacon:
-                beacon_hex = sat.flag_beacon_message.encode().hex()
+                beacon_hex = sat.get_flag_beacon_message().encode().hex()
                 self._log("crosslink", sat.sat_id, f"BEACON: {beacon_hex}")
+        self._maybe_emit_final()
 
     def dump_crosslink_inbox(
         self,
@@ -613,13 +702,16 @@ class World:
         if data.startswith(b"DOOMFW!!"):
             sat.compromised = True
             sat.flag_beacon = True
-            sat.flags["FW_PWN"] = f"{sat.name} firmware backdoor triggered"
+            sat.flags["FLAG{FIRMWARE_BACKDOOR_ON_ORBIT}"] = (
+                f"{sat.name} firmware backdoor triggered"
+            )
 
         self._log(
             "firmware",
             sat_id,
             f"firmware applied v={sat.firmware_version}",
         )
+        self._maybe_emit_final()
         return {"ok": True, "version": sat.firmware_version, "hash": real_hash}
 
 

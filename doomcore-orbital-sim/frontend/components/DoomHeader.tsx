@@ -12,6 +12,7 @@ export default function DoomHeader() {
         <Link href="/rf">RF</Link>
         <Link href="/crosslink">Crosslink</Link>
         <Link href="/firmware">Firmware</Link>
+        <Link href="/downlink">Downlink</Link>
         <Link href="/hex">Hex</Link>
       </nav>
     </header>

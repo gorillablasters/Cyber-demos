@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from typing import Optional
 
 from .client import DoomGSClient
@@ -23,6 +24,36 @@ def cmd_events(args: argparse.Namespace) -> None:
     c = DoomGSClient(base_url=args.base_url)
     res = c.events(since=args.since, limit=args.limit)
     print(json.dumps(res, indent=2))
+
+
+def cmd_downlink(args: argparse.Namespace) -> None:
+    """Fetch and decode downlink frames."""
+
+    c = DoomGSClient(base_url=args.base_url)
+
+    def once() -> None:
+        res = c.downlink(sat_id=args.sat_id, max_frames=args.max_frames)
+        frames = res.get("frames", []) if isinstance(res, dict) else []
+        decoded = []
+        for fh in frames:
+            try:
+                decoded.append(radio.decode_downlink_frame_hex(fh))
+            except Exception:
+                decoded.append({"frame_hex": fh, "error": "decode_failed"})
+        out = {"ok": True, "count": len(decoded), "decoded": decoded}
+        print(json.dumps(out, indent=2))
+
+    if not args.watch:
+        once()
+        return
+
+    interval = max(0.1, float(args.interval))
+    try:
+        while True:
+            once()
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        return
 
 
 def cmd_uplink_set_mode(args: argparse.Namespace) -> None:
@@ -206,6 +237,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.add_argument("--limit", type=int, default=200, help="Max events to return")
     sp.set_defaults(func=cmd_events)
+
+    # downlink
+    sp = sub.add_parser("downlink", help="Pop and decode downlink telemetry frames")
+    sp.add_argument(
+        "--sat-id",
+        type=int,
+        default=None,
+        help="Optional satellite ID to pop from (default: all)",
+    )
+    sp.add_argument(
+        "--max-frames",
+        type=int,
+        default=10,
+        help="Maximum frames to pop per request",
+    )
+    sp.add_argument(
+        "--watch",
+        action="store_true",
+        help="Continuously poll downlink until Ctrl-C",
+    )
+    sp.add_argument(
+        "--interval",
+        type=float,
+        default=1.0,
+        help="Polling interval seconds (with --watch)",
+    )
+    sp.set_defaults(func=cmd_downlink)
 
     # uplink-set-mode
     sp = sub.add_parser("uplink-set-mode", help="Send SET_MODE command to a satellite")

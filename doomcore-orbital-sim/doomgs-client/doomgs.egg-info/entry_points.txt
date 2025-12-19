@@ -1,2 +1,0 @@
-[console_scripts]
-doomgs = doomgs.cli:main

@@ -1,5 +1,0 @@
-Metadata-Version: 2.4
-Name: doomgs
-Version: 0.1.0
-Summary: MF DOOM-themed groundstation client for Doomcore Orbital Sim
-Requires-Dist: requests

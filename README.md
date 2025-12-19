@@ -1,1 +1,0 @@
-# Operation Doomsday fixed stack\n\nRun `docker-compose up --build` and open http://localhost:3000.\n

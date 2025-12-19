@@ -6,7 +6,6 @@ import { apiGet, apiPost, getSid } from "../lib/api";
 type SessionResponse = { ok: boolean; sid?: string };
 
 export default function DoomHeader() {
-  // Display the SID the UI actually uses (localStorage)
   const [sid, setSid] = useState<string>(() => (typeof window === "undefined" ? "" : getSid()));
 
   const [copied, setCopied] = useState<boolean>(false);
@@ -20,10 +19,8 @@ export default function DoomHeader() {
 
     async function load() {
       try {
-        // apiGet already returns JSON
         const data = await apiGet<SessionResponse>("/api/sim/session");
 
-        // Optional safety: if server reports a different SID, align localStorage + UI
         if (!cancelled && data?.ok && data.sid && data.sid !== getSid()) {
           localStorage.setItem("doom_sid", data.sid);
           setSid(data.sid);
@@ -33,7 +30,6 @@ export default function DoomHeader() {
       }
     }
 
-    // Ensure SID is set immediately from localStorage even if this component mounts early
     if (typeof window !== "undefined") setSid(getSid());
 
     load();
@@ -77,7 +73,6 @@ export default function DoomHeader() {
     setResetOk(false);
 
     try {
-      // apiPost already returns JSON
       const data = await apiPost<any>("/api/sim/reset");
 
       if (!data?.ok) {

@@ -95,7 +95,11 @@ class DownlinkPacket:
 
     @staticmethod
     def compute_weak_tag(version: int, sat_id: int, tlv_len: int) -> int:
-        hdr = DOWNLINK_MAGIC + bytes([version & 0xFF, sat_id & 0xFF]) + (tlv_len & 0xFFFF).to_bytes(2, "little")
+        hdr = (
+            DOWNLINK_MAGIC
+            + bytes([version & 0xFF, sat_id & 0xFF])
+            + (tlv_len & 0xFFFF).to_bytes(2, "little")
+        )
         return crc16(hdr)
 
     @staticmethod
@@ -143,12 +147,10 @@ def build_set_mode_payload(mode: Mode) -> bytes:
 
 
 def build_nudge_power_payload(delta: int) -> bytes:
-    # signed int8
     return bytes([0x02, (delta & 0xFF)])
 
 
 def build_temp_offset_payload(delta: int) -> bytes:
-    # signed int8
     return bytes([0x03, (delta & 0xFF)])
 
 
@@ -219,10 +221,20 @@ def parse_tlm_payload(payload: bytes) -> dict:
             out["temp_c"] = tr / 2.0
 
         if DL_TLV_ORBIT in merged and len(merged[DL_TLV_ORBIT]) >= 6:
-            sm = int.from_bytes(merged[DL_TLV_ORBIT][0:2], "little", signed=False) / 10.0
-            inc = int.from_bytes(merged[DL_TLV_ORBIT][2:4], "little", signed=False) / 10.0
-            raan = int.from_bytes(merged[DL_TLV_ORBIT][4:6], "little", signed=False) / 10.0
-            out["orbit"] = {"semi_major_km": sm, "inclination_deg": inc, "raan_deg": raan}
+            sm = (
+                int.from_bytes(merged[DL_TLV_ORBIT][0:2], "little", signed=False) / 10.0
+            )
+            inc = (
+                int.from_bytes(merged[DL_TLV_ORBIT][2:4], "little", signed=False) / 10.0
+            )
+            raan = (
+                int.from_bytes(merged[DL_TLV_ORBIT][4:6], "little", signed=False) / 10.0
+            )
+            out["orbit"] = {
+                "semi_major_km": sm,
+                "inclination_deg": inc,
+                "raan_deg": raan,
+            }
 
         if DL_TLV_STATUS in merged and len(merged[DL_TLV_STATUS]) >= 1:
             sb = merged[DL_TLV_STATUS][0]

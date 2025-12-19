@@ -20,7 +20,6 @@ export function sidHeaders(extra?: HeadersInit): HeadersInit {
 }
 
 export async function syncSidWithServer(): Promise<string> {
-  // Always call session with whatever we currently have
   const r = await fetch("/api/sim/session", {
     method: "GET",
     headers: sidHeaders(),
@@ -28,7 +27,6 @@ export async function syncSidWithServer(): Promise<string> {
   });
   const j = await r.json();
   if (j?.sid && typeof j.sid === "string" && j.sid !== getSid()) {
-    // Server disagrees -> align localStorage so all future requests match what UI shows
     setSid(j.sid);
   }
   return getSid();

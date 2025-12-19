@@ -9,12 +9,13 @@ from . import radio
 
 
 class DoomGSClient:
-    def __init__(self, base_url: Optional[str] = None, sid: Optional[str] = None) -> None:
+    def __init__(
+        self, base_url: Optional[str] = None, sid: Optional[str] = None
+    ) -> None:
         self.base_url = base_url or get_base_url()
         self.session = requests.Session()
         self.sid = sid or os.getenv("DOOMGS_SID")
         if self.sid:
-            # Allow multiple isolated player sessions against one backend.
             self.session.headers.update({"X-SESSION-ID": self.sid})
         self._seq: Dict[int, int] = {}
 

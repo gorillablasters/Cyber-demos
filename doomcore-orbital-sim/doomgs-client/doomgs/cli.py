@@ -11,9 +11,6 @@ from . import secure
 from . import tui as tui_mod
 
 
-# --- command implementations -------------------------------------------------
-
-
 def cmd_world(args: argparse.Namespace) -> None:
     c = DoomGSClient(base_url=args.base_url)
     data = c.world()
@@ -74,10 +71,8 @@ def cmd_uplink_set_mode(args: argparse.Namespace) -> None:
     c = DoomGSClient(base_url=args.base_url)
     mode = args.mode.upper()
     if args.seq is None:
-        # normal path: let client manage seq
         res = c.uplink_set_mode(args.sat_id, mode)  # type: ignore[arg-type]
     else:
-        # replay path: manual seq override
         payload = radio.build_set_mode_payload(mode)  # type: ignore[arg-type]
         frame = radio.build_cmd_frame(args.sat_id, args.seq, payload)
         res = c.uplink_frame(frame)
@@ -115,7 +110,6 @@ def cmd_uplink_drift_raan(args: argparse.Namespace) -> None:
     sat_id = args.sat_id
     delta = args.delta & 0xFF
     if args.seq is None:
-        # use client's internal seq
         seq = c._next_seq(sat_id)  # type: ignore[attr-defined]
     else:
         seq = args.seq
@@ -145,7 +139,6 @@ def cmd_xlink_send(args: argparse.Namespace) -> None:
     if args.dst.lower() in ("b", "broadcast", "*"):
         dst = None
     else:
-        # allow decimal or 0xNN
         dst = int(args.dst, 0)
     res = c.crosslink_send(
         src_sat_id=args.src_sat_id,
@@ -221,9 +214,6 @@ def cmd_tui(args: argparse.Namespace) -> None:
     tui_mod.run_tui(base_url=args.base_url)
 
 
-# --- parser -----------------------------------------------------------------
-
-
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="doomgs",
@@ -237,19 +227,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = p.add_subparsers(dest="command", required=True)
 
-    # session
     sp = sub.add_parser("session", help="Show the active session id (SID)")
     sp.set_defaults(func=cmd_session)
 
-    # reset
     sp = sub.add_parser("reset", help="Reset the simulation for this SID")
     sp.set_defaults(func=cmd_reset)
 
-    # world
     sp = sub.add_parser("world", help="Show world / constellation status")
     sp.set_defaults(func=cmd_world)
 
-    # events
     sp = sub.add_parser("events", help="Show recent events log")
     sp.add_argument(
         "--since",
@@ -260,7 +246,6 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--limit", type=int, default=200, help="Max events to return")
     sp.set_defaults(func=cmd_events)
 
-    # downlink
     sp = sub.add_parser("downlink", help="Pop and decode downlink telemetry frames")
     sp.add_argument(
         "--sat-id",
@@ -287,7 +272,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.set_defaults(func=cmd_downlink)
 
-    # uplink-set-mode
     sp = sub.add_parser("uplink-set-mode", help="Send SET_MODE command to a satellite")
     sp.add_argument("sat_id", type=int, help="Satellite ID (e.g. 1, 2, 17, 18)")
     sp.add_argument(
@@ -312,7 +296,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.set_defaults(func=cmd_uplink_set_mode)
 
-    # uplink-nudge-power
     sp = sub.add_parser(
         "uplink-nudge-power", help="Adjust satellite power level by a delta"
     )
@@ -326,7 +309,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.set_defaults(func=cmd_uplink_nudge_power)
 
-    # uplink-temp-offset
     sp = sub.add_parser(
         "uplink-temp-offset", help="Apply temp calibration offset to satellite"
     )
@@ -340,7 +322,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.set_defaults(func=cmd_uplink_temp_offset)
 
-    # uplink-drift-raan (Stage 9)
     sp = sub.add_parser(
         "uplink-drift-raan", help="Adjust orbit RAAN via DRIFT_RAAN command (Stage 9)"
     )
@@ -358,12 +339,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.set_defaults(func=cmd_uplink_drift_raan)
 
-    # uplink-raw (new)
     sp = sub.add_parser("uplink-raw", help="Send a raw DOOMLINK frame (hex)")
     sp.add_argument("frame_hex", help="Full DOOMLINK frame in hex")
     sp.set_defaults(func=cmd_uplink_raw)
 
-    # xlink-send
     sp = sub.add_parser(
         "xlink-send", help="Send a crosslink frame from one sat to another"
     )
@@ -377,18 +356,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sp.set_defaults(func=cmd_xlink_send)
 
-    # xlink-dump
     sp = sub.add_parser("xlink-dump", help="Dump crosslink inbox for a satellite")
     sp.add_argument("sat_id", type=int)
     sp.add_argument("--max-frames", type=int, default=20)
     sp.set_defaults(func=cmd_xlink_dump)
 
-    # firmware-status
     sp = sub.add_parser("firmware-status", help="Show firmware status for a satellite")
     sp.add_argument("sat_id", type=int)
     sp.set_defaults(func=cmd_firmware_status)
 
-    # firmware-upload-chunk
     sp = sub.add_parser(
         "firmware-upload-chunk", help="Upload a firmware chunk (hex) to a satellite"
     )
@@ -396,7 +372,6 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("chunk_hex", help="Firmware bytes in hex")
     sp.set_defaults(func=cmd_firmware_upload_chunk)
 
-    # firmware-apply
     sp = sub.add_parser(
         "firmware-apply", help="Apply staged firmware with a claimed hash"
     )
@@ -404,14 +379,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("claimed_hash", help="Claimed firmware hash (hex string)")
     sp.set_defaults(func=cmd_firmware_apply)
 
-    # firmware-download
     sp = sub.add_parser(
         "firmware-download", help="Download active firmware image for a satellite"
     )
     sp.add_argument("sat_id", type=int)
     sp.set_defaults(func=cmd_firmware_download)
 
-    # secure-xlink-build
     sp = sub.add_parser(
         "secure-xlink-build",
         help="Build ciphertext matching the sim's secure crosslink scheme",
@@ -421,7 +394,6 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("plain_hex", help="Plaintext bytes (hex)")
     sp.set_defaults(func=cmd_secure_xlink_build)
 
-    # TUI
     sp = sub.add_parser("tui", help="Launch curses TUI")
     sp.set_defaults(func=cmd_tui)
 

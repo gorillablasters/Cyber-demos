@@ -5,7 +5,6 @@ import zlib
 import hashlib
 from dataclasses import dataclass, field, asdict
 from Crypto.Cipher import ChaCha20_Poly1305
-from Crypto.Random import get_random_bytes
 from typing import Dict, List, Literal, Optional, Set, Any, Tuple
 
 

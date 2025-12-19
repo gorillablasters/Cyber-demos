@@ -74,11 +74,9 @@ def run_tui(base_url: Optional[str] = None) -> None:
             stdscr.erase()
             height, width = stdscr.getmaxyx()
 
-            # header
             _draw_header(stdscr, width)
             y = len(MF_DOOM_MASK) + 2
 
-            # world
             try:
                 w = client.world()["world"]
             except Exception as e:  # noqa: BLE001
@@ -89,7 +87,6 @@ def run_tui(base_url: Optional[str] = None) -> None:
 
             y = _draw_world(stdscr, y, w)
 
-            # events poll
             try:
                 ev_data = client.events(since=last_ts, limit=50)
                 if ev_data.get("ok"):
@@ -103,7 +100,6 @@ def run_tui(base_url: Optional[str] = None) -> None:
 
             _draw_events(stdscr, y + 1, height, events)
 
-            # footer / help
             footer = "[Q]uit  [1] D00M-01 SAFE  [2] D00M-01 NOMINAL  [3] D00M-02 ➜ K00KIES-02 ping"
             stdscr.addstr(
                 height - 1,

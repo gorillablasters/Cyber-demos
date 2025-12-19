@@ -1,15 +1,11 @@
 import { useState } from "react";
-const API = "http://localhost:8000";
+import { apiPost } from "../lib/api";
 export default function CommandConsole() {
   const [hex, setHex] = useState("");
   const [resp, setResp] = useState(null);
 
   async function send() {
-    const r = await fetch(`${API}/api/sim/uplink`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ frame_hex: hex }),
-    });
+    const r = await apiPost<any>("/api/sim/uplink", JSON.stringify({ frame_hex: hex }));
     setResp(await r.json());
   }
 

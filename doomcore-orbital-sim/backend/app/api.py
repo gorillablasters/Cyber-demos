@@ -39,7 +39,9 @@ def _extract_sid(request: Request) -> Optional[str]:
     return None
 
 
-manager = WorldManager(ttl_seconds=int(os.getenv("WORLD_TTL_SECONDS", str(6 * 60 * 60))))
+manager = WorldManager(
+    ttl_seconds=int(os.getenv("WORLD_TTL_SECONDS", str(6 * 60 * 60)))
+)
 
 
 @app.middleware("http")
@@ -54,7 +56,6 @@ async def sid_middleware(request: Request, call_next):
         sid = str(uuid.uuid4())
         generated = True
 
-    # Attach to request state for handlers
     request.state.sid = sid
 
     response: Response = await call_next(request)
@@ -66,7 +67,6 @@ async def sid_middleware(request: Request, call_next):
             samesite="lax",
         )
     return response
-# --- request models ---------------------------------------------------------
 
 
 class UplinkRequest(BaseModel):
@@ -97,9 +97,6 @@ class FirmwareUpload(BaseModel):
 class FirmwareApply(BaseModel):
     sat_id: int
     claimed_hash: str
-
-
-# --- endpoints --------------------------------------------------------------
 
 
 @app.get("/api/sim/world")

@@ -1,7 +1,7 @@
+import { apiPost } from "../lib/api";
 import DoomHeader from "../components/DoomHeader";
 import { useEffect, useState } from "react";
 
-const API = "http://localhost:8000";
 
 function hexToBytes(hex: string): Uint8Array {
   const clean = hex.trim();
@@ -58,10 +58,7 @@ export default function DownlinkPage() {
   async function pull() {
     const body: any = { max_frames: 10 };
     if (satId.trim() !== "") body.sat_id = parseInt(satId, 0);
-    const r = await fetch(`${API}/api/sim/downlink`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
+    const r = await apiPost<any>("/api/sim/downlink", JSON.stringify(body));
     const j = await r.json();
     const out: any[] = [];
     for (const fh of j.frames || []) {

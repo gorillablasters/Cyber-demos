@@ -209,7 +209,7 @@ doomgs firmware-upload-chunk 18 444f4f4d465721214141414141414141
 ### Apply with weak signature prefix
 
 ```bash
-doomgs firmware-apply 18 145db52600000000000000000000000000000000000000000000000000000000
+doomgs firmware-apply 18 145db526
 ```
 
 ### Verify

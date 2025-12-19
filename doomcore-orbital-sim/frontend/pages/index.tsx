@@ -3,16 +3,17 @@ import DoomHeader from "../components/DoomHeader";
 import SystemGrid from "../components/SystemGrid";
 import SatPanel from "../components/SatPanel";
 import LogConsole from "../components/LogConsole";
-const API = "http://localhost:8000";
+import { apiGet } from "../lib/api";
+
 export default function Dashboard() {
   const [world, setWorld] = useState<any>(null);
   const [events, setEvents] = useState<any[]>([]);
 
   async function pull() {
-    let w = await fetch(`${API}/api/sim/world`).then(r => r.json());
+    const w = await apiGet<any>("/api/sim/world");
     if (w.ok) setWorld(w.world);
 
-    let e = await fetch(`${API}/api/sim/events`).then(r => r.json());
+    const e = await apiGet<any>("/api/sim/events");
     if (e.ok) setEvents(e.events);
   }
 

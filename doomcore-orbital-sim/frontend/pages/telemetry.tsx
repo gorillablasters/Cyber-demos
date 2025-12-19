@@ -2,13 +2,13 @@ import DoomHeader from "../components/DoomHeader";
 import SystemGrid from "../components/SystemGrid";
 import TelemetryPanel from "../components/TelemetryPanel";
 import React, { useEffect, useState } from "react";
-const API = "http://localhost:8000";
+import { apiGet } from "../lib/api";
+
 export default function Telemetry() {
   const [world, setWorld] = useState<any>(null);
 
   async function pull() {
-    const r = await fetch(`${API}/api/sim/world`);
-    const j = await r.json();
+    const j = await apiGet<any>("/api/sim/world");
     if (j.ok) setWorld(j.world);
   }
 

@@ -3,13 +3,13 @@ import CrosslinkMap from "../components/CrosslinkMap";
 import CommandConsole from "../components/CommandConsole";
 import SystemGrid from "../components/SystemGrid";
 import React, { useEffect, useState } from "react";
-const API = "http://localhost:8000";
+import { apiGet } from "../lib/api";
+
 export default function Crosslink() {
   const [world, setWorld] = useState<any>(null);
 
   async function pull() {
-    const r = await fetch(`${API}/api/sim/world`);
-    const j = await r.json();
+    const j = await apiGet<any>("/api/sim/world");
     if (j.ok) setWorld(j.world);
   }
 

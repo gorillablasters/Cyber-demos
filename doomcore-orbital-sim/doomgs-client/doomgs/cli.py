@@ -20,6 +20,20 @@ def cmd_world(args: argparse.Namespace) -> None:
     print(json.dumps(data, indent=2))
 
 
+def cmd_session(args: argparse.Namespace) -> None:
+    """Print the active session id (SID) used by this client."""
+    c = DoomGSClient(base_url=args.base_url)
+    data = c.session_info()
+    print(json.dumps(data, indent=2))
+
+
+def cmd_reset(args: argparse.Namespace) -> None:
+    """Reset the simulation for the current session."""
+    c = DoomGSClient(base_url=args.base_url)
+    data = c.reset_world()
+    print(json.dumps(data, indent=2))
+
+
 def cmd_events(args: argparse.Namespace) -> None:
     c = DoomGSClient(base_url=args.base_url)
     res = c.events(since=args.since, limit=args.limit)
@@ -222,6 +236,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     sub = p.add_subparsers(dest="command", required=True)
+
+    # session
+    sp = sub.add_parser("session", help="Show the active session id (SID)")
+    sp.set_defaults(func=cmd_session)
+
+    # reset
+    sp = sub.add_parser("reset", help="Reset the simulation for this SID")
+    sp.set_defaults(func=cmd_reset)
 
     # world
     sp = sub.add_parser("world", help="Show world / constellation status")

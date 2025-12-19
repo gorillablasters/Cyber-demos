@@ -1,25 +1,18 @@
 import { useState } from "react";
-const API = "http://localhost:8000";
+import { apiPost } from "../lib/api";
+
 export default function FirmwareConsole({ sat_id }: { sat_id: number }) {
   const [hex, setHex] = useState("");
   const [claimed, setClaimed] = useState("");
   const [resp, setResp] = useState<any>(null);
 
   async function upload() {
-    const r = await fetch(`${API}/api/sim/firmware/upload`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sat_id, chunk_hex: hex }),
-    });
+    const r = await apiPost<any>("/api/sim/firmware/upload", JSON.stringify({ sat_id, chunk_hex: hex }));
     setResp(await r.json());
   }
 
   async function applyFw() {
-    const r = await fetch(`${API}/api/sim/firmware/apply`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sat_id, claimed_hash: claimed }),
-    });
+    const r = await apiPost<any>("/api/sim/firmware/apply", JSON.stringify({ sat_id, claimed_hash: claimed }));
     setResp(await r.json());
   }
 

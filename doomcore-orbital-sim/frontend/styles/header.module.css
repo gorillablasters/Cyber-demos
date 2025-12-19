@@ -1,6 +1,5 @@
 .header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   background: #001900;
   border-bottom: 2px solid #00ff66;
@@ -10,6 +9,11 @@
 .title {
   font-size: 22px;
   text-shadow: 0 0 8px #00ff66;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
 }
 
 .nav a {

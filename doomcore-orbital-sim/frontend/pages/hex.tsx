@@ -1,18 +1,15 @@
+import { apiPost } from "../lib/api";
 import DoomHeader from "../components/DoomHeader";
 import HexViewer from "../components/HexViewer";
 import { useEffect, useState } from "react";
 import SystemGrid from "../components/SystemGrid";
-const API = "http://localhost:8000";
+
 export default function HexPage() {
   const [inbox, setInbox] = useState<any[]>([]);
   const [sat, setSat] = useState(0x11);
 
   async function pull() {
-    const r = await fetch(`${API}/api/sim/crosslink/dump`, {
-      method: "POST",
-      body: JSON.stringify({ sat_id: sat, max_frames: 50 }),
-      headers: { "Content-Type": "application/json" }
-    });
+    const r = await apiPost<any>("/api/sim/crosslink/dump", JSON.stringify({ sat_id: sat, max_frames: 50 }));
     const j = await r.json();
     if (j.ok) setInbox(j.frames);
   }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Optional, Dict, Any, List
 import requests
 
@@ -8,9 +9,13 @@ from . import radio
 
 
 class DoomGSClient:
-    def __init__(self, base_url: Optional[str] = None) -> None:
+    def __init__(self, base_url: Optional[str] = None, sid: Optional[str] = None) -> None:
         self.base_url = base_url or get_base_url()
         self.session = requests.Session()
+        self.sid = sid or os.getenv("DOOMGS_SID")
+        if self.sid:
+            # Allow multiple isolated player sessions against one backend.
+            self.session.headers.update({"X-SESSION-ID": self.sid})
         self._seq: Dict[int, int] = {}
 
     def _url(self, path: str) -> str:
@@ -33,6 +38,12 @@ class DoomGSClient:
 
     def world(self) -> Dict[str, Any]:
         return self._get("/api/sim/world")
+
+    def session_info(self) -> Dict[str, Any]:
+        return self._get("/api/sim/session")
+
+    def reset_world(self) -> Dict[str, Any]:
+        return self._post("/api/sim/reset", {})
 
     def events(self, since: Optional[float] = None, limit: int = 200) -> Dict[str, Any]:
         params: Dict[str, Any] = {"limit": limit}

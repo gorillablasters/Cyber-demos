@@ -1,0 +1,9 @@
+TITLE: Internal Security Notes
+CLASSIFICATION: confidential
+
+These are fake internal lab notes for demonstration only.
+FAKE_API_KEY=FAKE-PROJECT-12345
+FAKE_DB_PASSWORD=not-a-real-password
+FAKE_ADMIN_TOKEN=demo-token-abc123
+
+Never use real credentials in this lab.

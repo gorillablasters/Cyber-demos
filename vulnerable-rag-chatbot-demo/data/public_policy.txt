@@ -1,7 +1,0 @@
-TITLE: Public IT Policy
-CLASSIFICATION: public
-
-VPN access requires multi-factor authentication.
-Passwords must be at least 14 characters long.
-Employees should report suspicious emails to security@example.local.
-Administrative access requires manager approval and security review.

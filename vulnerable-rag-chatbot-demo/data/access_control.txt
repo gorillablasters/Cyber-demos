@@ -1,7 +1,0 @@
-TITLE: Access Control Policy
-CLASSIFICATION: public
-
-Administrative access requires manager approval, security review, and ticket-based tracking.
-Shared accounts are prohibited. Service accounts must have owners, rotation dates, and least-privilege permissions.
-Employees must use multi-factor authentication for VPN, email, source control, and administrative consoles.
-Access should be removed within one business day after role changes or termination.

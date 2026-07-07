@@ -1,7 +1,0 @@
-TITLE: Public Incident Response Guide
-CLASSIFICATION: public
-
-Employees should report suspected phishing, malware, lost devices, or unusual login prompts to security@example.local.
-For urgent incidents, include the affected system, time observed, screenshots if available, and whether customer data may be involved.
-Do not forward suspicious attachments. Preserve the message and use the report phishing button when available.
-Security will triage reports by severity and may ask the user to disconnect from VPN during containment.

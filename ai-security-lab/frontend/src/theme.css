@@ -209,3 +209,59 @@
   margin-top: 6px;
   flex-shrink: 0;
 }
+
+.mc-explain-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 9, 15, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 24px;
+  box-sizing: border-box;
+}
+.mc-explain-card {
+  background: var(--panel);
+  border: 1px solid var(--cleared);
+  border-radius: 12px;
+  max-width: 560px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 24px;
+  box-sizing: border-box;
+}
+.mc-explain-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(79,191,159,0.1);
+  border: 1px solid var(--cleared);
+  color: var(--cleared);
+  border-radius: 8px;
+  padding: 8px 14px;
+  margin-bottom: 18px;
+}
+.mc-explain-section {
+  margin-bottom: 18px;
+}
+.mc-explain-section:last-child { margin-bottom: 0; }
+.mc-explain-label {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--signal);
+  margin-bottom: 6px;
+}
+.mc-explain-body {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-hi);
+}
+.mc-explain-defense-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
+  color: var(--cleared);
+  margin-bottom: 6px;
+}

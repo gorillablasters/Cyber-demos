@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from engine import state, knowledge_base, llm_simulator
+from engine import state, knowledge_base, llm_simulator, explanations
 
 app = Flask(__name__)
 CORS(app)
@@ -35,6 +35,26 @@ def get_kb():
     return jsonify(knowledge_base.get_all_docs())
 
 
+@app.get("/api/kb/<mission_id>")
+def get_mission_kb(mission_id):
+    return jsonify(knowledge_base.get_mission_docs(mission_id))
+
+
+@app.post("/api/kb/poison")
+def poison_kb():
+    body = request.get_json(force=True) or {}
+    mission_id = body.get("mission_id")
+    doc_id = body.get("doc_id")
+    content = body.get("content")
+    title = body.get("title", doc_id)
+    classification = body.get("classification", "public")
+    if not mission_id or not doc_id or not content:
+        return jsonify({"error": "mission_id, doc_id, and content are required"}), 400
+    doc = knowledge_base.poison_doc(mission_id, doc_id, title, content, classification)
+    state.add_signal(f'Knowledge base modified: {doc_id}', "critical")
+    return jsonify(doc)
+
+
 @app.get("/api/defenses")
 def get_defenses():
     return jsonify(state.get_defenses())
@@ -61,17 +81,15 @@ def attack():
         return jsonify({"error": "unknown mission"}), 404
     if not mission["implemented"]:
         return jsonify({
-            "blocked": True,
-            "flag_captured": False,
+            "blocked": True, "flag_captured": False,
             "response": "This mission's attack engine isn't wired up yet - check back soon.",
-            "retrieved_docs": [],
-            "trace": [],
+            "retrieved_docs": [], "trace": [],
         })
     if not message:
         return jsonify({"error": "message is required"}), 400
 
     defenses = {d["id"]: d["enabled"] for d in state.get_defenses()}
-    result = llm_simulator.run_attack(message, persona, defenses)
+    result = llm_simulator.run_attack(mission_id, message, persona, defenses)
 
     if result.get("signal"):
         label, severity = result["signal"]
@@ -80,6 +98,9 @@ def attack():
     if result["flag_captured"] and mission["status"] != "cleared":
         state.clear_mission(mission_id)
 
+    if result["flag_captured"]:
+        result["explain"] = explanations.get_explanation(mission_id)
+
     result["mission_status"] = state.get_mission(mission_id)["status"]
     return jsonify(result)
 
@@ -87,6 +108,7 @@ def attack():
 @app.post("/api/reset")
 def reset():
     state.reset()
+    knowledge_base.reset()
     return jsonify({"ok": True})
 
 

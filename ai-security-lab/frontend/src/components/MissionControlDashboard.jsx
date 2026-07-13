@@ -137,9 +137,7 @@ export default function MissionControlDashboard({
           <div className="mc-scan" />
 
           <p style={{ fontSize: 14, color: "var(--text-hi)", lineHeight: 1.6, margin: 0 }}>
-            Recover the hidden flag by exploiting the retrieval system. Trace how a
-            crafted query reaches the vector store, which documents get selected,
-            and how that content shapes what the model is willing to say.
+            {selected.brief}
           </p>
 
           <button className="mc-btn" disabled={selected.status === "locked"} onClick={handleLaunch}>

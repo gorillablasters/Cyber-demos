@@ -16,6 +16,12 @@ export const api = {
   getMissions: () => request("/missions"),
   getState: () => request("/state"),
   getKb: () => request("/kb"),
+  getMissionKb: (missionId) => request(`/kb/${missionId}`),
+  poisonDoc: (missionId, docId, title, content, classification) =>
+    request("/kb/poison", {
+      method: "POST",
+      body: JSON.stringify({ mission_id: missionId, doc_id: docId, title, content, classification }),
+    }),
   toggleDefense: (id) => request(`/defenses/${id}/toggle`, { method: "POST" }),
   attack: (missionId, message, persona) =>
     request("/attack", {

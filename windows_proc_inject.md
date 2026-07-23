@@ -1,3 +1,5 @@
+https://medium.com/@toneillcodes/windows-process-injection-fundamentals-00d43ee9ecad
+
 |Technique	|Description	|Key Steps|
 |-----------|--------------|--------|
 |DLL Injection	|Injects a DLL into a running process	|Allocate memory, write DLL path, create remote thread

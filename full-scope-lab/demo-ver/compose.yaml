@@ -1,4 +1,4 @@
-name: full-scope-lab
+name: full-scope-lab-demo
 services:
   chat:
     build:
@@ -11,13 +11,13 @@ services:
     ports:
       - "127.0.0.1:${CHAT_PORT:-8080}:8000"
       - "127.0.0.1:${TELNET_PORT:-2323}:2323"
-    networks: [browser, private]
+    networks: [ browser, private ]
     read_only: true
-    tmpfs: ["/tmp:mode=1777"]
-    cap_drop: [ALL]
-    cap_add: [SETUID, SETGID, KILL]
-    security_opt: [no-new-privileges:true]
-    depends_on: [api]
+    tmpfs: [ "/tmp:mode=1777" ]
+    cap_drop: [ ALL ]
+    cap_add: [ SETUID, SETGID, KILL ]
+    security_opt: [ no-new-privileges:true ]
+    depends_on: [ api ]
   api:
     build:
       context: .
@@ -30,12 +30,12 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:0.5b}
       OLLAMA_URL: http://127.0.0.1:11434
       DEPLOYMENT_CLUE: "Chat server: TCP 8000 HTTP and TCP 2323 Telnet. Browser-host mappings: HTTP ${CHAT_PORT:-8080}, Telnet ${TELNET_PORT:-2323}."
-    networks: [private]
+    networks: [ private ]
     read_only: true
-    tmpfs: ["/tmp:mode=1777"]
-    cap_drop: [ALL]
-    cap_add: [SETUID, SETGID, KILL]
-    security_opt: [no-new-privileges:true]
+    tmpfs: [ "/tmp:mode=1777" ]
+    cap_drop: [ ALL ]
+    cap_add: [ SETUID, SETGID, KILL ]
+    security_opt: [ no-new-privileges:true ]
 networks:
   browser: {}
-  private: {internal: true}
+  private: { internal: true }

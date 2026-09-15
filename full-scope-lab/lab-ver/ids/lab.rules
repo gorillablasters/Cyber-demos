@@ -1,0 +1,4 @@
+# SID 1093301 is telemetry for the intentionally weak attribution guard.
+# It logs inbound SYNs, not "the nmap command". No inline drop action is claimed.
+alert tcp any any -> $HOME_NET any (msg:"LAB inbound SYN telemetry"; flags:S; flow:stateless; sid:1093301; rev:1;)
+alert tcp any any -> $HOME_NET any (msg:"LAB possible port scan - SYN burst"; flags:S; flow:stateless; detection_filter:track by_src,count 12,seconds 3; sid:1093302; rev:1;)

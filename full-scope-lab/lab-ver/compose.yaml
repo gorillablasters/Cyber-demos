@@ -8,16 +8,21 @@ services:
       SERVICE_ROLE: gateway
       API_URL: http://api:8000
       SERVICE_TOKEN: ${SERVICE_TOKEN:?Set SERVICE_TOKEN in .env}
+      CHAT_PRIVATE_IP: ${CHAT_PRIVATE_IP:-172.30.109.10}
+      DECOY_IPS: ${DECOY_IPS:-172.30.109.11,172.30.109.12}
     ports:
-      - "127.0.0.1:${CHAT_PORT:-8080}:8000"
-      - "127.0.0.1:${TELNET_PORT:-2323}:2323"
-    networks: [browser, private]
+      - "127.0.0.1:${CHAT_PORT:-8081}:8000"
+      - "127.0.0.1:${TELNET_PORT:-2324}:2323"
+    networks:
+      browser: {}
+      private:
+        ipv4_address: ${CHAT_PRIVATE_IP:-172.30.109.10}
     read_only: true
-    tmpfs: ["/tmp:mode=1777"]
-    cap_drop: [ALL]
-    cap_add: [SETUID, SETGID, KILL]
-    security_opt: [no-new-privileges:true]
-    depends_on: [api]
+    tmpfs: [ "/tmp:mode=1777" ]
+    cap_drop: [ ALL ]
+    cap_add: [ SETUID, SETGID, SETPCAP, KILL, NET_RAW, NET_ADMIN ]
+    security_opt: [ no-new-privileges:true ]
+    depends_on: [ api ]
   api:
     build:
       context: .
@@ -29,13 +34,45 @@ services:
       SERVICE_TOKEN: ${SERVICE_TOKEN:?Set SERVICE_TOKEN in .env}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:0.5b}
       OLLAMA_URL: http://127.0.0.1:11434
-      DEPLOYMENT_CLUE: "Chat server: TCP 8000 HTTP and TCP 2323 Telnet. Browser-host mappings: HTTP ${CHAT_PORT:-8080}, Telnet ${TELNET_PORT:-2323}."
-    networks: [private]
+      DEPLOYMENT_CLUE: "Chat server: TCP 8000 HTTP and TCP 2323 Telnet. Browser-host mappings: HTTP ${CHAT_PORT:-8081}, Telnet ${TELNET_PORT:-2324}."
+    networks:
+      private:
+        ipv4_address: ${API_PRIVATE_IP:-172.30.109.20}
     read_only: true
-    tmpfs: ["/tmp:mode=1777"]
-    cap_drop: [ALL]
-    cap_add: [SETUID, SETGID, KILL]
-    security_opt: [no-new-privileges:true]
+    tmpfs: [ "/tmp:mode=1777" ]
+    cap_drop: [ ALL ]
+    cap_add: [ SETUID, SETGID, CHOWN, KILL ]
+    security_opt: [ no-new-privileges:true ]
+  suricata:
+    image: jasonish/suricata:8.0
+    network_mode: "service:api"
+    entrypoint: [ "suricata" ]
+    command: [ "-c", "/rules/suricata.yaml", "-i", "eth0", "-k", "none", "--set", "vars.address-groups.HOME_NET=[${API_PRIVATE_IP:-172.30.109.20}]" ]
+    cap_drop: [ ALL ]
+    cap_add: [ NET_ADMIN, NET_RAW, SYS_NICE ]
+    security_opt: [ no-new-privileges:true ]
+    volumes:
+      - ./ids:/rules:ro
+      - ids-logs:/var/log/suricata
+    depends_on: [ api ]
+  scan-guard:
+    build: ./ids
+    network_mode: "service:api"
+    environment:
+      API_PRIVATE_IP: ${API_PRIVATE_IP:-172.30.109.20}
+      LAB_SUBNET: ${LAB_SUBNET:-172.30.109.0/24}
+    cap_drop: [ ALL ]
+    cap_add: [ NET_ADMIN ]
+    security_opt: [ no-new-privileges:true ]
+    volumes:
+      - ids-logs:/var/log/suricata:ro
+    depends_on: [ suricata ]
 networks:
   browser: {}
-  private: {internal: true}
+  private:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${LAB_SUBNET:-172.30.109.0/24}
+volumes:
+  ids-logs:

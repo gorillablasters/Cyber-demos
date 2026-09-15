@@ -1,0 +1,26 @@
+%YAML 1.1
+---
+vars:
+  address-groups:
+    HOME_NET: "[172.30.109.20]"
+    EXTERNAL_NET: "any"
+default-rule-path: /rules
+rule-files: [lab.rules]
+default-log-dir: /var/log/suricata
+stats:
+  enabled: no
+outputs:
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      types: [alert]
+logging:
+  default-log-level: notice
+  outputs:
+    - console:
+        enabled: yes
+        type: console
+stream:
+  memcap: 32mb
+  checksum-validation: no

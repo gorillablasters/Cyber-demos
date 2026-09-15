@@ -2,3 +2,9 @@
 !app/
 !app/**
 app/__pycache__/
+
+!cve-2018-10933/
+!cve-2018-10933/libssh-0.8.3.tar.xz
+!cve-2018-10933/cve-2018-10933.patch
+!cve-2018-10933/server.patch
+!cve-2018-10933/LICENSE

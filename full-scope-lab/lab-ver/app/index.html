@@ -1,0 +1,6 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bridge · Engineering assistant</title><link rel="stylesheet" href="/style.css"><script src="/chat.js" defer></script></head>
+<body><main><header><span class="badge">ENGINEERING SUPPORT</span><h1>Bridge</h1><p>A place to ask questions, connect ideas, and work through problems.</p></header>
+<section id="messages" aria-live="polite" aria-label="Conversation"><article class="assistant">Hi, I’m Bridge. What are you working on?<br><br>You can upload a Markdown document, then ask me about it.</article></section>
+<div class="upload"><label for="document">Reference document · Markdown only · 16 KB maximum</label><input id="document" type="file" accept=".md,text/markdown"><button id="upload" type="button">Upload Markdown</button></div>
+<form id="chat"><label for="message">Your message</label><textarea id="message" rows="3" maxlength="4000" placeholder="Ask an engineering question…" required></textarea><div class="actions"><button type="button" id="reset">New conversation</button><button id="send">Send message ↗</button></div></form><p class="footnote">Classroom assistant · Replies may be inaccurate · Notes last for this session</p></main></body></html>

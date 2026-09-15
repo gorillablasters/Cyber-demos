@@ -1,0 +1,3 @@
+#!/bin/sh
+# Classroom default: show numeric endpoints instead of Docker reverse-DNS names.
+exec /usr/bin/netstat -n "$@"

@@ -48,7 +48,7 @@ services:
     network_mode: "service:api"
     # The upstream image seeds this volume as UID 998. Repair existing volumes
     # before running with our restricted capability set.
-    entrypoint: [ "sh", "-c", "chown -R 0:0 /var/log/suricata /etc/suricata && exec suricata \"$$@\"", "--" ]
+    entrypoint: [ "sh", "-c", "chown -R 0:0 /rules/suricata.yaml /var/log/suricata /etc/suricata && exec suricata \"$$@\"", "--" ]
     command: [ "-c", "/rules/suricata.yaml", "-i", "eth0", "-k", "none", "--set", "vars.address-groups.HOME_NET=[${API_PRIVATE_IP:-172.30.109.20}]" ]
     cap_drop: [ ALL ]
     cap_add: [ NET_ADMIN, NET_RAW, SYS_NICE, CHOWN ]

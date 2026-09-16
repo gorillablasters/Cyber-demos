@@ -12,7 +12,7 @@ services:
       DECOY_IPS: ${DECOY_IPS:-172.30.109.11,172.30.109.12}
     ports:
       - "127.0.0.1:${CHAT_PORT:-8081}:8000"
-      - "127.0.0.1:${TELNET_PORT:-2324}:2323"
+      - "127.0.0.1:${TELNET_PORT:-2323}:2323"
     networks:
       browser: {}
       private:

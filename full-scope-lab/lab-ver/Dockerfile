@@ -1,7 +1,13 @@
 # Reproduce the cloned Hacker House Dockerfile's vulnerable source and both patches.
 # Bullseye supplies OpenSSL 1.1 for this historical libssh; no current libssh substitute.
+FROM python:3.13-slim AS certificates
 FROM debian:bullseye-slim AS libssh-build
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential cmake patch libssl-dev zlib1g-dev \
+COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+# Freeze the historical toolchain: live Bullseye indexes referenced removed packages.
+# Snapshot signatures remain verified; only their historical expiry is ignored.
+ARG DEBIAN_SNAPSHOT=20260824T000000Z
+RUN printf 'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/%s bullseye main\ndeb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/%s bullseye-security main\n' "$DEBIAN_SNAPSHOT" "$DEBIAN_SNAPSHOT" > /etc/apt/sources.list \
+    && apt-get -o Acquire::Retries=3 update && apt-get -o Acquire::Retries=3 install -y --no-install-recommends build-essential cmake patch libssl-dev zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 ADD cve-2018-10933/libssh-0.8.3.tar.xz /build/

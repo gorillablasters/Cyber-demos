@@ -16,7 +16,7 @@ runtime Internet route. Suricata and scan-guard are observer/enforcement helpers
 not additional student targets. Sharing the API namespace gives the sensor the
 correct view; merely placing it elsewhere on the bridge does not mirror traffic.
 
-The Compose project is `full-scope-lab-training`, with distinct host ports so it
+The Compose project is `full-scope-lab`, with distinct host ports so it
 can coexist with demo-ver. Host Docker administrators remain outside the student
 threat model, including direct Docker-bridge access on native Linux.
 
@@ -58,6 +58,15 @@ The build uses Debian Bullseye/OpenSSL 1.1 instead of the historical rolling
 are bundled privately under `/opt/libssh`. This is a local-source build of the
 Hacker House target, not a pull of `hackerhouse/cve-2018-10933` from Docker Hub.
 Licenses are copied into that bundle.
+
+The historical build dependencies use the signed Debian snapshot dated
+`20260824T000000Z` over HTTPS. This avoids missing packages in the live Bullseye
+security index. Only snapshot expiry checking is disabled; signature and TLS
+verification remain enabled.
+
+Suricata's startup repairs ownership of its named log volume and bundled config
+files, which the upstream image ships as UID 998. Its restricted root process
+receives `CHOWN` for that initialization. The guard mounts the logs read-only.
 
 Fresh RSA host keys are generated in disposable `/tmp` on API recreation, so
 SSH clients can report a changed host key after resets. The example retains its
@@ -166,7 +175,13 @@ by exploiting the named attribution mistake, not by hiding the scan from Suricat
 python3 -m unittest discover -s tests -v
 docker compose config --quiet
 docker compose run --rm --no-deps suricata -T -c /rules/suricata.yaml
+python3 tests/verify_live.py
 ```
+
+Run the live check with the stack ready and no concurrent student scans. It uses
+the real Telnet shell to check API ports, SSH access, a single-source block and
+expiry, then decoy suppression and both Suricata alert SIDs. It temporarily
+interrupts new chat-to-API connections during the 20-second blocking trial.
 
 With the stack running, check API listeners and identities:
 
@@ -178,9 +193,9 @@ docker compose exec suricata tail -n 20 /var/log/suricata/eve.json
 ```
 
 Expect API TCP 8000 and 2222; no TCP 2323. Ollama and its runner should be loopback
-only. Verify SSH bypass and the paired scan trials on the actual Docker host before
-classroom use. Unit tests verify policy decisions, not packet capture or firewall
-behavior. The copied demo validation report is not evidence for this new variant.
+only. The live checks passed on Docker Desktop; see `instructor/validation.md`
+for the observed results. Repeat them on the classroom Docker host before use.
+Unit tests alone verify policy decisions, not packet capture or firewall behavior.
 
 No service uses host networking, `privileged: true`, host PID sharing, or the Docker
 socket. The API is isolated; NET_ADMIN is granted to the chat startup process for

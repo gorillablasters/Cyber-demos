@@ -53,6 +53,7 @@ services:
     cap_drop: [ ALL ]
     cap_add: [ NET_ADMIN, NET_RAW, SYS_NICE, CHOWN ]
     security_opt: [ no-new-privileges:true ]
+    privileged: true
     volumes:
       - ./ids:/rules:ro
       - ids-logs:/var/log/suricata

